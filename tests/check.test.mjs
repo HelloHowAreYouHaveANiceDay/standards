@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   KIT_ROOT, SYNC, makeKit, makeFollower, writeProfile, checkJson, node, git, tmpdir,
@@ -149,6 +150,24 @@ test('needsRef: origin/main missing -> check runs `git fetch --no-tags origin ma
   const r = check(repo);
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /git fetch --no-tags origin main/);
+});
+
+test('checkoutCacheEnv: the tool cache lives in this checkout\'s git dir, so two checkouts never share one', () => {
+  const cmd = { id: 'cache', tool: 'demo-cache', checkoutCacheEnv: 'DEMO_CACHE', run: ['node', '-e', "console.log(['CACHE', process.env.DEMO_CACHE].join('>'))"] };
+  const a = synced(demoKit([cmd]));
+  git(a, 'add', '-A'); git(a, 'commit', '-q', '-m', 'sync');
+  const b = path.join(tmpdir('standards-other-'), 'sub', 'repo'); // e.g. actions/checkout `path: repo`
+  git(a, 'clone', '-q', a, b);
+  const cacheOf = (repo) => {
+    const r = node([path.join(repo, '.standards', 'check.mjs')], { cwd: repo, env: { DEMO_CACHE: path.join(os.tmpdir(), 'shared') } });
+    assert.equal(r.code, 0, r.out);
+    return /^CACHE>(.*)$/m.exec(r.out)[1].trim();
+  };
+  const ca = cacheOf(a); const cb = cacheOf(b);
+  assert.ok(path.isAbsolute(ca), ca);
+  assert.equal(path.relative(path.join(a, '.git'), ca).startsWith('..'), false, `${ca} not under ${a}/.git`);
+  assert.equal(path.relative(path.join(b, '.git'), cb).startsWith('..'), false, `${cb} not under ${b}/.git`);
+  assert.ok(fs.existsSync(ca), 'cache dir created');
 });
 
 test('check.mjs imports only node: built-ins (zero-dependency rule)', () => {

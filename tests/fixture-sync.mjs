@@ -64,6 +64,14 @@ for (const fx of FIXTURES) {
   const bad = node([path.join(dir, '.standards', 'check.mjs')], { cwd: dir });
   step(bad.code === 1 && /bad\.go:6:\d+:.*errcheck/.test(bad.out) && /FAIL \[[a-z-]+\/golangci-lint v2\.12\.2\] exit 1/.test(bad.out),
     `${fx.id}: a new unchecked error fails golangci (ratchet vs origin/main) naming bad.go:6`, bad.out);
+  // Same commit, second checkout at another path (a self-hosted runner's other workspace, a worktree, a
+  // `path: <repo>` subdir checkout): golangci's package cache is keyed by content, not location, so a
+  // shared cache hands back the first checkout's file paths and the ratchet silently drops the finding.
+  const other = path.join(tmpdir(`fixture-${fx.id}-other-`), fx.id);
+  git(KIT_ROOT, 'clone', '-q', '-b', 'pr', dir, other);
+  const again = node([path.join(other, '.standards', 'check.mjs')], { cwd: other });
+  step(again.code === 1 && /(^|\n)bad\.go:6:\d+:.*errcheck/.test(again.out),
+    `${fx.id}: the same finding in a second checkout at another path still fails, naming bad.go:6`, again.out);
   fs.rmSync(path.join(dir, 'bad.go'));
   fs.writeFileSync(path.join(dir, 'fmt.go'), UNFORMATTED_GO);
   const fmt = node([path.join(dir, '.standards', 'check.mjs')], { cwd: dir });
