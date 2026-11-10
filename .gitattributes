@@ -1,0 +1,3 @@
+# Kit repo: LF everywhere. Released profile bytes are what followers lock, so never normalise them.
+* text=auto eol=lf
+profiles/** -text

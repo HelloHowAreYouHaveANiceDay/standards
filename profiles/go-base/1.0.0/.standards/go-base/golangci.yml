@@ -1,0 +1,17 @@
+# go-base -- HelloHowAreYouHaveANiceDay/standards. Vendored; do not edit.
+# Correctness linters plus suppression hygiene. Overrides: .golangci.local.yml (reason comment each).
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true  # every //nolint says why
+      require-specific: true  # every //nolint names the linter

@@ -1,0 +1,54 @@
+{
+  "profile": "go-base",
+  "version": "0.0.0",
+  "tools": {
+    "golangci-lint": "v2.12.2"
+  },
+  "generate": [
+    {
+      "kind": "golangci-merge",
+      "from": ".standards/go-base/golangci.yml",
+      "overlay": ".golangci.local.yml",
+      "to": ".golangci.yml"
+    }
+  ],
+  "commands": [
+    {
+      "id": "go-vet",
+      "tool": "go vet",
+      "run": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "id": "gofmt",
+      "tool": "gofmt",
+      "run": [
+        "gofmt",
+        "-l",
+        "{goFiles}"
+      ],
+      "failOnOutput": true,
+      "outputLine": "{line}: not gofmt-formatted (fix: gofmt -w {line})"
+    },
+    {
+      "id": "golangci-lint",
+      "tool": "golangci-lint v2.12.2",
+      "install": {
+        "go": "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2",
+        "bin": "golangci-lint"
+      },
+      "needsRef": "origin/main",
+      "checkoutCacheEnv": "GOLANGCI_LINT_CACHE",
+      "run": [
+        "{bin}",
+        "run",
+        "--config=.golangci.yml",
+        "--new-from-merge-base=origin/main",
+        "./..."
+      ]
+    }
+  ]
+}
