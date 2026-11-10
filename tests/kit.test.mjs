@@ -59,7 +59,7 @@ test('go profiles: standalone golangci v2 configs, nolintlint strict, tools pinn
     assert.match(y, /^version: "2"$/m);
     assert.match(y, /^ {2}default: none$/m);
     for (const l of ['errcheck', 'govet', 'staticcheck', 'unused', 'ineffassign', 'nolintlint']) assert.match(y, new RegExp(`^ {4}- ${l}$`, 'm'), `${n} ${l}`);
-    assert.match(y, /nolintlint:\n\s+require-explanation: true\n\s+require-specific: true/);
+    assert.match(y, /nolintlint:\n\s+require-explanation: true[^\n]*\n\s+require-specific: true/);
     const cj = JSON.parse(fs.readFileSync(path.join(dir, '.standards', n, 'check.json'), 'utf8'));
     assert.deepEqual(cj.commands.map((c) => c.id), ['go-vet', 'gofmt', 'golangci-lint']);
     const g = cj.commands[2];
@@ -85,7 +85,7 @@ test('base: root .editorconfig (root = true, lf) and .gitattributes (* text=auto
   const ga = fs.readFileSync(path.join(dir, '.gitattributes'), 'utf8');
   assert.match(ga, /^\* text=auto eol=lf$/m);
   for (const b of ['png', 'pdf', 'zip', 'exe', 'dll', 'rvt']) assert.match(ga, new RegExp(`^\\*\\.${b} binary$`, 'm'));
-  const ag = fs.readFileSync(path.join(dir, '.standards/AGENTS.md'), 'utf8');
+  const ag = fs.readFileSync(path.join(dir, '.standards/RULES.md'), 'utf8');
   assert.match(ag, /node \.standards\/check\.mjs/);
   assert.match(ag, /\.golangci\.local\.yml/);
 });

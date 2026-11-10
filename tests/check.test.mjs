@@ -41,11 +41,11 @@ test('a changed vendored byte fails, naming the file and the lock', () => {
 
 test('a CRLF checkout of a vendored file fails the lock (renormalize first)', () => {
   const repo = synced(demoKit([]));
-  const f = path.join(repo, '.standards', 'AGENTS.md');
+  const f = path.join(repo, '.standards', 'RULES.md');
   fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\n/g, '\r\n'));
   const r = check(repo);
   assert.equal(r.code, 1);
-  assert.match(r.out, /FAIL \[lock\] \.standards\/AGENTS\.md/);
+  assert.match(r.out, /FAIL \[lock\] \.standards\/RULES\.md/);
 });
 
 test('a missing vendored file, an unlisted file in .standards/, and a stray lock all fail', () => {
@@ -134,7 +134,7 @@ test('{goFiles} expands to the .go files of go list package dirs (no testdata, n
   });
   const r = check(repo);
   assert.equal(r.code, 0, r.out);
-  const listed = r.out.split(/\r?\n/).filter((l) => l.endsWith('.go')).map((l) => path.relative(repo, l).replace(/\\/g, '/')).sort();
+  const listed = r.out.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.endsWith('.go')).sort();
   assert.deepEqual(listed, ['main.go', 'sub/x_test.go', 'sub/x_windows.go']);
 });
 

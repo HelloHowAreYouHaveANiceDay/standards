@@ -9,7 +9,7 @@ import {
   node, runAsync, serveKit, formatSums,
 } from './helpers.mjs';
 
-const AGENTS_LINE = 'Standards gate: `node .standards/check.mjs`; rules in `.standards/AGENTS.md`.';
+const AGENTS_LINE = 'Standards gate: `node .standards/check.mjs`; rules in `.standards/RULES.md`.';
 const read = (dir, f) => fs.readFileSync(path.join(dir, f));
 const sync = (cwd, ...args) => node([SYNC, ...args], { cwd });
 
@@ -149,8 +149,9 @@ test('golangci merge: lists append, scalars replace, maps merge, comments kept; 
   assert.equal(r.code, 0, r.out);
   const gen = read(repo, '.golangci.yml').toString();
   assert.match(gen, new RegExp(`# overlay: \\.golangci\\.local\\.yml sha256:${sha256(Buffer.from(overlay))}`));
-  assert.match(gen, /- G703.*\n\s+- G124 {2}# cookie flags/);
-  assert.match(gen, /- G107 {2}# url to HTTP request/);
+  assert.match(gen, /- G703.*\n\s+- G124 +# cookie flags/);
+  assert.match(gen, /- G107 +# url to HTTP request/);
+  assert.match(gen, /- linters: \[errcheck, gosec, bodyclose\]/);
   assert.match(gen, /default-signifies-exhaustive: false/);
   assert.doesNotMatch(gen, /default-signifies-exhaustive: true/);
   assert.match(gen, /\nrun:\n {2}timeout: 5m/);

@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # append-only diff vs the base branch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # go 1.23 on purpose: the golangci v2.12.2 install (go 1.25 module) must work via GOTOOLCHAIN auto,
+      # as it must for bim-cli / autocad-cli. No tool cache: every run is a fresh-runner run.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - run: npm ci
+      - name: Append-only (released profiles/<name>/<x.y.z>/ never modified or deleted)
+        if: github.event_name == 'pull_request'
+        run: node scripts/append-only.mjs origin/${{ github.base_ref }}
+      - name: SHA256SUMS match the released files
+        run: node --test tests/kit.test.mjs
+      - name: Unit tests
+        run: npm test
+      - name: Fixture sync (every profile) + check.mjs with real tools
+        run: node tests/fixture-sync.mjs --out synced-${{ runner.os }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synced-${{ runner.os }}
+          path: synced-${{ runner.os }}.txt
+
+  byte-equality:
+    name: windows sync == linux sync (byte for byte)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: synced-*
+          merge-multiple: true
+      - run: |
+          wc -l synced-Linux.txt synced-Windows.txt
+          diff -u synced-Linux.txt synced-Windows.txt

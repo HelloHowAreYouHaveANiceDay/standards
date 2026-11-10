@@ -1,0 +1,46 @@
+# go-strict -- HelloHowAreYouHaveANiceDay/standards. Vendored; do not edit.
+# From energy-cli .golangci.yml (2026-06-14), plus nolintlint. Overrides: .golangci.local.yml (reason comment each).
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - staticcheck
+    - govet
+    - ineffassign
+    - unused
+    - gosec
+    - gocritic
+    - exhaustive
+    - misspell
+    - bodyclose
+    - nolintlint
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
+    gosec:
+      excludes:
+        - G107  # url to HTTP request -- built from trusted config, not user input
+        - G204  # subprocess with variable -- tool paths come from trusted install paths
+        - G304  # file path taint -- test fixtures are internal
+        - G301  # output dirs use 0755 intentionally (world-readable)
+        - G306  # output files use 0644 intentionally (world-readable artifacts)
+        - G115  # integer overflow -- values bounded by domain
+        - G703  # path traversal in config read -- path comes from user config, not external input
+    nolintlint:
+      require-explanation: true  # every //nolint says why
+      require-specific: true  # every //nolint names the linter
+
+issues:
+  exclusions:
+    rules:
+      # Test files: relax errcheck and gosec.
+      - linters: [errcheck, gosec, bodyclose]
+        path: '_test\.go'
+      # main.go has intentional broad patterns.
+      - linters: [gosec]
+        path: 'main\.go'
+      # math.Pow style suggestion -- readability preference, not a bug.
+      - linters: [staticcheck]
+        text: 'QF1005'
