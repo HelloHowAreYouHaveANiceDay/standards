@@ -41,6 +41,7 @@
         "bin": "golangci-lint"
       },
       "needsRef": "origin/main",
+      "checkoutCacheEnv": "GOLANGCI_LINT_CACHE",
       "run": [
         "{bin}",
         "run",

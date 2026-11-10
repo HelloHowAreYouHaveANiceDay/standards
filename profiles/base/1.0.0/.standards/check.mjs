@@ -188,6 +188,20 @@ function goFiles(root) {
   return { files };
 }
 
+// A tool cache private to this checkout: <git dir>/standards-cache/<id>. golangci-lint keys its package cache by
+// module path + file content but stores absolute file paths in the cached findings, so a cache shared between two
+// checkouts of the same code (self-hosted runner workspaces, worktrees, `path:` checkouts, a fresh clone) hands
+// back the other checkout's paths and `--new-from-merge-base` silently drops the finding. Always overrides the env.
+function checkoutCache(root, id) {
+  const g = sh('git', ['rev-parse', '--absolute-git-dir'], { cwd: root });
+  const base = g.code === 0 && g.stdout.trim()
+    ? path.resolve(g.stdout.trim(), 'standards-cache')
+    : path.join(cacheDir(), 'checkouts', sha256(path.resolve(root)).slice(0, 16));
+  const dir = path.join(base, id.replace(/[^A-Za-z0-9.-]+/g, '_'));
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function runCommand(root, profile, cmd) {
   const tag = `${profile}/${cmd.tool || cmd.id}`;
   const failures = [];
@@ -203,6 +217,8 @@ function runCommand(root, profile, cmd) {
     const err = ensureRef(root, cmd.needsRef);
     if (err) { fail(err); return failures; }
   }
+  const env = { ...process.env };
+  if (cmd.checkoutCacheEnv) env[cmd.checkoutCacheEnv] = checkoutCache(root, cmd.id);
   const argv = [];
   for (const a of cmd.run) {
     if (a === '{bin}') argv.push(bin);
@@ -220,7 +236,7 @@ function runCommand(root, profile, cmd) {
   if (varying.length === 0) chunks.push(fixed);
   for (let i = 0; i < varying.length; i += 200) chunks.push([...fixed, ...varying.slice(i, i + 200)]);
   for (const a of chunks) {
-    const r = sh(a[0], a.slice(1), { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const r = sh(a[0], a.slice(1), { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     if (r.out) process.stdout.write(r.out.endsWith('\n') ? r.out : `${r.out}\n`);
     if (r.error) { fail(`could not start ${a[0]}: ${r.error.code || r.error.message}`); continue; }
     if (r.code !== 0) fail(`exit ${r.code} (findings above name file:line)`);
