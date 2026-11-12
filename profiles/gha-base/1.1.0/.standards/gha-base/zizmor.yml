@@ -1,0 +1,11 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile gha-base); do not edit -- re-run sync.
+# Pinning policy for zizmor unpinned-uses (spec--ci-standards S2): third-party actions must be SHA-pinned
+# (with a "# vX.Y.Z" comment); GitHub-owned actions (actions/*, github/*) may stay tag-pinned.
+# Used only when the follower has no .github/zizmor.yml / zizmor.yaml / zizmor.yml / zizmor.yaml of its own.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "actions/*": ref-pin
+        "github/*": ref-pin
+        "*": hash-pin
