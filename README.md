@@ -19,11 +19,28 @@ sync.mjs                        init / sync / bump (run from a kit clone after `
 who.mjs                         read-only: which repo follows which profile@version
 ```
 
-Profiles: `base` (root `.editorconfig`, `.gitattributes`, `.standards/check.mjs`, `.standards/RULES.md`),
-`go-base` and `go-strict` (standalone golangci v2 configs; pick one), `vue-ts` (Vue 3 + TS + Vite: type-aware ESLint,
-Prettier, `vue-tsc --build`, exact pins checked offline by a zero-dep `tool.mjs`; follower-owned `eslint.config.mjs`
-and `tsconfig.*.json` extend the vendored files) and `firebase-web` (offline lint: rules tracked, not open, loaded by
-a rules test; no committed keys; pinned CLI). Each profile's rules: `.standards/<name>/RULES.md`. Semver: major = unchanged code can newly fail;
+Profiles (pick `base` plus at most one per language; each profile's rules: `.standards/<name>/RULES.md`):
+
+| Profile | Stack | Gate |
+|---|---|---|
+| `base` | every repo | root `.editorconfig`, `.gitattributes` (LF), `.standards/check.mjs`, locks |
+| `go-base` / `go-strict` | Go | go vet, gofmt, golangci-lint v2 (ratchet vs origin/main); pick one |
+| `ts-base` | TypeScript (Node, CLIs, Workers) | pins, `tsc --build`, type-aware ESLint, Prettier |
+| `react-ts` | React + Vite + TS | ts-base + react-hooks / react-refresh |
+| `vue-ts` | Vue 3 + Vite + TS | pins, `vue-tsc --build`, type-aware ESLint + eslint-plugin-vue, Prettier |
+| `next-ts` | Next.js + TS | pins, `next typegen`, `tsc`, ESLint + eslint-config-next, Prettier |
+| `astro-ts` | Astro + TS | pins, `astro check`, ESLint + eslint-plugin-astro, Prettier (+ astro plugin) |
+| `python-base` | Python | Ruff check + Ruff format (sha256-pinned binary, no Python needed) |
+| `rust-base` | Rust | `cargo fmt --check`, clippy `-D warnings` (pinned toolchain) |
+| `dotnet-base` / `dotnet-addin` | C# / .NET (addin: net48 Revit/Rhino relaxations, used with base) | `dotnet format whitespace`, build with SDK analyzers as errors |
+| `c-base` | own C/C++ | clang-format (sha256-pinned wheel), vendored code via `.clang-format-ignore` |
+| `ruby-base` | Ruby (SketchUp extensions) | RuboCop + rubocop-sketchup, reasoned disables |
+| `pwsh-base` | PowerShell | PSScriptAnalyzer (pinned), reasoned suppressions |
+| `gha-base` | GitHub Actions workflows | actionlint + shellcheck + zizmor (sha256-pinned binaries) |
+| `firebase-web` | Firebase web apps (any language profile) | offline lint: rules tracked, not open, loaded by a rules test; no keys; pinned CLI |
+
+Tools install themselves, pinned and cross-platform (zero-dep `.standards/<name>/tool.mjs` runners or check.mjs's
+`install.go`); CI never autofixes. Semver: major = unchanged code can newly fail;
 minor = an autofixable or off-by-default rule, or a relaxation; patch = comments/docs.
 
 ## Follower use
