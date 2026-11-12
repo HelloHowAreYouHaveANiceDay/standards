@@ -1,0 +1,65 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile ruby-base); do not edit -- re-run sync.
+# Follower's root .rubocop.yml:
+#   inherit_from: .standards/ruby-base/rubocop.yml
+#   AllCops:
+#     SketchUp:
+#       SourcePath: extension   # where the extension sources live
+# Overrides go there (RuboCop's native mechanism); see .standards/ruby-base/RULES.md.
+
+plugins:
+  - rubocop-sketchup
+
+AllCops:
+  # SketchUp 2024, 2025 and 2026 embed Ruby 3.2.2; this is the Ruby the code runs on, not the Ruby that runs RuboCop.
+  TargetRubyVersion: 3.2
+  # The RuboCop version is pinned exactly, so enabling its new cops cannot drift under a follower.
+  NewCops: enable
+  SuggestExtensions: false
+  SketchUp:
+    SourcePath: src
+    TargetSketchUpVersion: 2024
+    EncryptedExtension: false
+
+# --- SketchUp API department switches -----------------------------------------------------------------------------
+# Bugs, deprecations, performance and suggestions apply to any code that calls the SketchUp API.
+# Requirements are the Extension Warehouse submission rules (one root .rb, one namespace, registration file); a
+# follower that ships through the Extension Warehouse turns them on in its own .rubocop.yml.
+SketchupBugs:
+  Enabled: true
+SketchupDeprecations:
+  Enabled: true
+SketchupPerformance:
+  Enabled: true
+SketchupSuggestions:
+  Enabled: true
+SketchupRequirements:
+  Enabled: false
+
+# --- Core RuboCop: defaults, minus rules that are taste or size thresholds rather than defects ---------------------
+# Metrics: method/class/ABC size thresholds are not defects; they produce churn, not fixes.
+Metrics:
+  Enabled: false
+
+# Class-level doc comments are not required.
+Style/Documentation:
+  Enabled: false
+
+# The magic comment is a no-op for the effect it was made for on Ruby 3.2 targets and adds a line to every file.
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+# Geometry code names points, vectors and scalars a, b, s, t, u, v, w, x, y, z; the 3-letter minimum only rewrites them.
+Naming/MethodParameterName:
+  Enabled: false
+
+# LF everywhere, on Windows and Linux alike (the default `native` demands CRLF on Windows).
+Layout/EndOfLine:
+  EnforcedStyle: lf
+
+# `a * b + c` is unambiguous to a reader of math; the cop flags every vector expression.
+Lint/AmbiguousOperatorPrecedence:
+  Enabled: false
+
+# Unused / mis-scoped suppressions must fail (default true; stated so an override is a visible decision).
+Lint/RedundantCopDisableDirective:
+  Enabled: true

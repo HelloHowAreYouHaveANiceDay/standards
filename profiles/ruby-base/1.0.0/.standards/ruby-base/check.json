@@ -1,0 +1,47 @@
+{
+  "profile": "ruby-base",
+  "version": "1.0.0",
+  "tools": {
+    "rubocop": "1.92.2",
+    "rubocop-sketchup": "2.2.0",
+    "rubocop-ast": "1.51.0",
+    "parser": "3.3.13.0",
+    "ast": "2.4.3",
+    "prism": "2.1.0",
+    "lint_roller": "1.1.0",
+    "language_server-protocol": "3.17.0.6",
+    "parallel": "2.3.0",
+    "rainbow": "3.1.1",
+    "regexp_parser": "2.13.1",
+    "ruby-progressbar": "1.13.0",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0"
+  },
+  "commands": [
+    {
+      "id": "policy",
+      "tool": "policy",
+      "run": [
+        "node",
+        ".standards/ruby-base/tool.mjs",
+        "policy"
+      ]
+    },
+    {
+      "id": "rubocop",
+      "tool": "rubocop 1.92.2",
+      "run": [
+        "node",
+        ".standards/ruby-base/tool.mjs",
+        "run",
+        "rubocop",
+        "--format",
+        "clang",
+        "--no-color",
+        "--cache",
+        "false",
+        "--force-exclusion"
+      ]
+    }
+  ]
+}
