@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SUMS_RE = /^([0-9a-f]{64}) {2}(\S(?:.*\S)?)$/;
+const OFFICIAL_KIT = 'https://raw.githubusercontent.com/HelloHowAreYouHaveANiceDay/standards/main';
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const posix = (p) => p.split(path.sep).join('/');
 
@@ -257,12 +258,13 @@ function ratchetGolangci(baseText, headText) {
     const added = !baseSet.has(`${p}=${r.value}`);
     if (added && /(^|\.)(disable|disabled|disable-all)(\.|$)/.test(p) && truthyYaml(r.value)) {
       add(r, `disabled linter or linter set: ${r.value || p}`);
-    } else if (added && /exclude|exclusion/.test(p) && truthyYaml(r.value)) {
-      add(r, `added exclusion entry: ${r.value || p}`);
+    } else if (added && /exclude|exclusion|skip-dirs|skip-files/.test(p) && truthyYaml(r.value)) {
+      add(r, `added exclusion entry ${p}: ${r.value || p}`);
     }
     if (!/(threshold|(^|\.)max(?:-|$))/.test(p) || !/^\d+(?:\.\d+)?$/.test(r.value)) continue;
     const previous = base.find((b) => key(b) === p && /^\d+(?:\.\d+)?$/.test(b.value));
-    if (previous && Number(r.value) > Number(previous.value)) add(r, `raised ${r.path.at(-1)} from ${previous.value} to ${r.value}`);
+    if (!previous) add(r, `added threshold ${r.path.at(-1)}=${r.value}`);
+    else if (Number(r.value) > Number(previous.value)) add(r, `raised ${r.path.at(-1)} from ${previous.value} to ${r.value}`);
   }
   return failures;
 }
@@ -328,15 +330,24 @@ export function ratchetConfigs(baseFiles, headFiles) {
     } catch { failures.push('eslint-suppressions.json:1: invalid JSON; cannot verify suppressions'); }
   }
   if (headFiles['.golangci.local.yml']) failures.push(...ratchetGolangci(baseFiles['.golangci.local.yml'] || '', headFiles['.golangci.local.yml']));
-  if (headFiles['.standards.json'] && baseFiles['.standards.json']) failures.push(...ratchetManifest(baseFiles['.standards.json'], headFiles['.standards.json']));
+  if (headFiles['.standards.json'] && baseFiles['.standards.json']) {
+    failures.push(...ratchetManifest(baseFiles['.standards.json'], headFiles['.standards.json']));
+    try {
+      const before = JSON.parse(baseFiles['.standards.json']);
+      const after = JSON.parse(headFiles['.standards.json']);
+      if ((before.kit || OFFICIAL_KIT) !== (after.kit || OFFICIAL_KIT)) {
+        failures.push(`.standards.json:${jsonLine(headFiles['.standards.json'], 'kit')}: changed kit source`);
+      }
+    } catch { /* manifest parser reports malformed JSON in the regular lock check */ }
+  }
   return failures;
 }
 
-export async function publishedIntegrity(root, changed, manifest) {
+export async function publishedIntegrity(root, changed, manifest, kitBase = OFFICIAL_KIT) {
   const relevant = changed.filter((f) => f.startsWith('.standards/') && f !== '.standards/generated.SHA256SUMS');
   if (!relevant.length) return [];
   const failures = [];
-  const kit = String(manifest.kit || '').replace(/\/+$/, '');
+  const kit = String(kitBase).replace(/\/+$/, '');
   const get = async (rel) => {
     if (/^https?:\/\//.test(kit)) {
       const response = await fetch(`${kit}/${rel}`, { signal: AbortSignal.timeout(2500), headers: { 'cache-control': 'no-cache' } });
@@ -412,6 +423,15 @@ export async function configRatchet(root) {
     if (fs.existsSync(abs)) headFiles[file] = fs.readFileSync(abs, 'utf8');
   }
   const failures = ratchetConfigs(baseFiles, headFiles);
+  if (changed.includes('.golangci.yml')) {
+    const generated = fs.readFileSync(path.join(root, '.golangci.yml'), 'utf8');
+    const stamp = overlayStamp(generated);
+    if (stamp?.path) {
+      const overlayPath = path.join(root, ...stamp.path.split('/'));
+      const actual = fs.existsSync(overlayPath) ? sha256(fs.readFileSync(overlayPath)) : null;
+      if (actual !== stamp.sha) failures.push(`standards: FAIL [ratchet] .golangci.yml: generated output does not match overlay stamp for ${stamp.path}`);
+    } else failures.push('standards: FAIL [ratchet] .golangci.yml: generated output does not match overlay stamp');
+  }
   if (changed.some((f) => f.startsWith('.standards/') || f === '.golangci.yml')) {
     let manifest = {};
     try { manifest = JSON.parse(fs.readFileSync(path.join(root, '.standards.json'), 'utf8')); }

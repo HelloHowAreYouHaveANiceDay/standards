@@ -18,3 +18,7 @@ Every follower takes base first: it vendors check.mjs and makes the worktree LF.
   (`* text=auto eol=lf` + binary types), zero-dependency `.standards/check.mjs`, `.standards/RULES.md`.
   check.json `checkoutCacheEnv: <VAR>` points a tool's cache at `<git dir>/standards-cache/<id>` (never shared
   between checkouts).
+
+## 1.1.2
+
+- Close config ratchet bypasses for kit source changes, generated config edits, newly added thresholds, and golangci skip exclusions.

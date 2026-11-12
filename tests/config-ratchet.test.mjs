@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { configRatchet, publishedIntegrity, ratchetConfigs } from '../src/profiles/base/.standards/check.mjs';
@@ -38,6 +39,32 @@ test('raising a golangci threshold fails', () => {
   assert.match(ratchetConfigs(base, head)[0], /\.golangci\.local\.yml:4:.*threshold.*100.*200/);
 });
 
+test('adding a golangci threshold fails', () => {
+  const failures = ratchetConfigs(
+    { '.golangci.local.yml': 'linters:\n  settings: {}\n' },
+    { '.golangci.local.yml': 'linters:\n  settings:\n    dupl:\n      threshold: 100\n' },
+  );
+  assert.match(failures[0], /\.golangci\.local\.yml:4:.*added threshold.*100/);
+});
+
+test('adding skip-dirs or skip-files fails as an exclusion', () => {
+  for (const key of ['skip-dirs', 'skip-files']) {
+    const failures = ratchetConfigs(
+      { '.golangci.local.yml': 'run: {}\n' },
+      { '.golangci.local.yml': `run:\n  ${key}:\n    - generated\n` },
+    );
+    assert.match(failures[0], new RegExp(`\\.golangci\\.local\\.yml:3:.*exclusion.*${key}`));
+  }
+});
+
+test('changing the manifest kit origin fails', () => {
+  const failures = ratchetConfigs(
+    { '.standards.json': json({ kit: 'https://raw.githubusercontent.com/HelloHowAreYouHaveANiceDay/standards/main', profiles: { base: '1.1.1' } }) },
+    { '.standards.json': json({ kit: 'file:///attacker-controlled-kit', profiles: { base: '1.1.1' } }) },
+  );
+  assert.match(failures[0], /\.standards\.json:.*changed kit source/);
+});
+
 test('dropping or downgrading a standards profile and adding an opt-out fail', () => {
   const base = { '.standards.json': json({ profiles: { base: '1.1.0', 'ts-base': '1.2.0' } }) };
   const dropped = { '.standards.json': json({ profiles: { base: '1.1.0' } }) };
@@ -70,9 +97,31 @@ test('changed vendored standards files must match the pinned kit release', async
   const failures = await publishedIntegrity(root, ['.standards/check.mjs'], {
     kit,
     profiles: { base: '1.0.0' },
-  });
+  }, kit);
   assert.equal(failures.length, 1);
   assert.match(failures[0], /\.standards\/check\.mjs: differs from kit-published content/);
+});
+
+test('tampered generated config with a refreshed checksum and changed overlay fails', async () => {
+  const repo = makeFollower({
+    '.standards.json': json({ kit: 'https://raw.githubusercontent.com/HelloHowAreYouHaveANiceDay/standards/main', profiles: {} }),
+    '.golangci.yml': '# GENERATED\n# overlay: .golangci.local.yml sha256:old\nlinters: {}\n',
+    '.golangci.local.yml': 'linters: {}\n',
+    '.standards/generated.SHA256SUMS': 'old  .golangci.yml\n',
+  });
+  const bare = path.join(tmpdir('standards-generated-origin-'), 'origin.git');
+  git(repo, 'clone', '-q', '--bare', repo, bare);
+  git(repo, 'remote', 'add', 'origin', bare);
+  git(repo, 'fetch', '-q', 'origin', 'main');
+  fs.writeFileSync(path.join(repo, '.golangci.yml'), '# GENERATED\n# overlay: .golangci.local.yml sha256:old\nlinters:\n  disable: [all]\n');
+  fs.writeFileSync(path.join(repo, '.golangci.local.yml'), '# harmless comment\nlinters: {}\n');
+  const tampered = fs.readFileSync(path.join(repo, '.golangci.yml'));
+  const sum = crypto.createHash('sha256').update(tampered).digest('hex');
+  fs.writeFileSync(path.join(repo, '.standards', 'generated.SHA256SUMS'), `${sum}  .golangci.yml\n`);
+  git(repo, 'add', '.golangci.yml', '.golangci.local.yml', '.standards/generated.SHA256SUMS');
+  git(repo, 'commit', '-q', '-m', 'tamper generated output');
+  const failures = await configRatchet(repo);
+  assert.match(failures.join('\n'), /\.golangci\.yml:.*generated output does not match overlay stamp/);
 });
 
 test('the gate compares changed config with origin/main merge base', async () => {
