@@ -1,0 +1,79 @@
+{
+  "profile": "next-ts",
+  "version": "1.0.0",
+  "tools": {
+    "eslint": "10.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "eslint-config-next": "16.4.6",
+    "eslint-config-prettier": "10.1.8",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "prettier": "3.10.0"
+  },
+  "peers": [
+    "next",
+    "react"
+  ],
+  "commands": [
+    {
+      "id": "pins",
+      "tool": "pins",
+      "run": [
+        "node",
+        ".standards/next-ts/tool.mjs",
+        "pins"
+      ]
+    },
+    {
+      "id": "typegen",
+      "tool": "next typegen",
+      "run": [
+        "node",
+        ".standards/next-ts/tool.mjs",
+        "run",
+        "next",
+        "typegen"
+      ]
+    },
+    {
+      "id": "typecheck",
+      "tool": "tsc 6.0.3",
+      "run": [
+        "node",
+        ".standards/next-ts/tool.mjs",
+        "run",
+        "typescript:tsc",
+        "--noEmit"
+      ]
+    },
+    {
+      "id": "eslint",
+      "tool": "eslint 10.14.0",
+      "run": [
+        "node",
+        ".standards/next-ts/tool.mjs",
+        "run",
+        "eslint",
+        ".",
+        "--max-warnings",
+        "0"
+      ]
+    },
+    {
+      "id": "prettier",
+      "tool": "prettier 3.10.0",
+      "run": [
+        "node",
+        ".standards/next-ts/tool.mjs",
+        "run",
+        "prettier",
+        "--check",
+        ".",
+        "!.standards/**",
+        "!.standards.json",
+        "!**/package-lock.json",
+        "!eslint-suppressions.json"
+      ]
+    }
+  ]
+}

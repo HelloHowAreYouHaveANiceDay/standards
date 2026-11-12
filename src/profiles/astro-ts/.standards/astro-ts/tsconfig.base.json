@@ -1,0 +1,11 @@
+{
+  "//": "Vendored by HelloHowAreYouHaveANiceDay/standards (profile astro-ts). Do not edit; extend it from the root tsconfig.json (add include, paths, exclude). Builds on Astro's own astro/tsconfigs/strict.",
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}
