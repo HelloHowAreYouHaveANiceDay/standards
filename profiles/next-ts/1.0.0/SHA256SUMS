@@ -1,0 +1,6 @@
+7080dfec14dfd99d79d8957f9beed9d4e897b273b61398222c71edd527ae8a9e  .prettierrc.json
+74c28f8e88c3506b1ad1c4e8589610eb51fe1b7cb689694372e6cb0ed3714e89  .standards/next-ts/RULES.md
+03f1cccf18590723ffdbc8d7ccf5624838aecce5a67936548c98867b1d71f166  .standards/next-ts/check.json
+adb9d39c377c4f737877a12550e25b91842a1222e6cfd546dbbbc8027dd33908  .standards/next-ts/eslint.base.mjs
+5cf82321d3acdf1c17fb8cdbbfe941d2dcccec46a39695c7fe92c022970b60e1  .standards/next-ts/tool.mjs
+454d755d89e6eb9bde649b04bf589e425841e259eebdb7f67fc737077a515f17  .standards/next-ts/tsconfig.base.json

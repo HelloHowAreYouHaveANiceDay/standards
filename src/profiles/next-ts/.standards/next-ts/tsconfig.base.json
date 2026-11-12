@@ -1,0 +1,25 @@
+{
+  "//": "Vendored by HelloHowAreYouHaveANiceDay/standards (profile next-ts). Do not edit; extend it from the root tsconfig.json (add include, paths, exclude).",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "isolatedModules": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "plugins": [{ "name": "next" }]
+  }
+}

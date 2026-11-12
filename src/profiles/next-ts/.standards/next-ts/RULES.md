@@ -1,0 +1,1 @@
+# next-ts rules (draft)
