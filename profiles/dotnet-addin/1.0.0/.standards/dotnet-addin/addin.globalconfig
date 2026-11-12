@@ -1,0 +1,12 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile dotnet-addin). Do not edit.
+# Loaded by dotnet-base's dotnet.props for net4x / netstandard targets only (add-ins that multi-target net48 for
+# Revit 2024 and older, plus current .NET). Each rule below suggests an API that does not exist there.
+is_global = true
+
+# string.Contains(string, StringComparison) is .NET Core 2.1+.
+dotnet_diagnostic.CA2249.severity = none
+# Span-based Substring/AsSpan overloads of string.Concat/Append are .NET Core 2.1+ (or the System.Memory package).
+dotnet_diagnostic.CA1845.severity = none
+dotnet_diagnostic.CA1846.severity = none
+# Environment.ProcessId is .NET 5+.
+dotnet_diagnostic.CA1837.severity = none

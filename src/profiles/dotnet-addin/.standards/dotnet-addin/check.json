@@ -1,0 +1,8 @@
+{
+  "profile": "dotnet-addin",
+  "version": "0.0.0",
+  "tools": {
+    "requires": "dotnet-base"
+  },
+  "commands": []
+}
