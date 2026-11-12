@@ -1,0 +1,5 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile rust-base); do not edit. Stable options only.
+# Defaults, pinned here so a follower-side rustfmt.toml cannot drift the format. Auto keeps each file's own line
+# ending: a Windows checkout with core.autocrlf (CRLF on disk) passes locally, and base's .gitattributes
+# (eol=lf) keeps the repository itself LF.
+newline_style = "Auto"
