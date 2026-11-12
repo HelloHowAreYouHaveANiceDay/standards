@@ -230,7 +230,7 @@ function yamlRecords(text) {
     if (isList) parent.push('[]');
     if (match) {
       const key = match[1].trim().replace(/^['"]|['"]$/g, '');
-      const value = (match[2] || '').trim();
+      const value = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
       const record = { path: [...parent, key], value, line: i + 1 };
       records.push(record);
       if (!value) stack.push({ indent, key: isList ? '[]' : key });
@@ -246,13 +246,13 @@ function truthyYaml(value) {
   return !['', 'false', 'null', '~', '[]', '{}'].includes(value.toLowerCase());
 }
 
-function ratchetGolangci(baseText, headText) {
+function ratchetGolangci(baseText, headText, file = '.golangci.local.yml') {
   const base = yamlRecords(baseText);
   const head = yamlRecords(headText);
   const key = (r) => r.path.join('.').toLowerCase();
   const baseSet = new Set(base.map((r) => `${key(r)}=${r.value}`));
   const failures = [];
-  const add = (r, msg) => failures.push(`.golangci.local.yml:${r.line}: ${msg}`);
+  const add = (r, msg) => failures.push(`${file}:${r.line}: ${msg}`);
   for (const r of head) {
     const p = key(r);
     const added = !baseSet.has(`${p}=${r.value}`);
@@ -431,6 +431,8 @@ export async function configRatchet(root) {
       const actual = fs.existsSync(overlayPath) ? sha256(fs.readFileSync(overlayPath)) : null;
       if (actual !== stamp.sha) failures.push(`standards: FAIL [ratchet] .golangci.yml: generated output does not match overlay stamp for ${stamp.path}`);
     } else failures.push('standards: FAIL [ratchet] .golangci.yml: generated output does not match overlay stamp');
+    const baseGenerated = loadAt(base.stdout.trim(), '.golangci.yml');
+    if (baseGenerated) failures.push(...ratchetGolangci(baseGenerated, generated, '.golangci.yml'));
   }
   if (changed.some((f) => f.startsWith('.standards/') || f === '.golangci.yml')) {
     let manifest = {};

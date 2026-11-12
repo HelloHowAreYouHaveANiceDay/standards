@@ -39,6 +39,12 @@ test('raising a golangci threshold fails', () => {
   assert.match(ratchetConfigs(base, head)[0], /\.golangci\.local\.yml:4:.*threshold.*100.*200/);
 });
 
+test('raising a golangci threshold to a quoted number fails', () => {
+  const base = { '.golangci.local.yml': 'linters:\n  settings:\n    dupl:\n      threshold: 100\n' };
+  const head = { '.golangci.local.yml': 'linters:\n  settings:\n    dupl:\n      threshold: "200"\n' };
+  assert.match(ratchetConfigs(base, head)[0], /\.golangci\.local\.yml:4:.*threshold.*100.*200/);
+});
+
 test('adding a golangci threshold fails', () => {
   const failures = ratchetConfigs(
     { '.golangci.local.yml': 'linters:\n  settings: {}\n' },
@@ -122,6 +128,34 @@ test('tampered generated config with a refreshed checksum and changed overlay fa
   git(repo, 'commit', '-q', '-m', 'tamper generated output');
   const failures = await configRatchet(repo);
   assert.match(failures.join('\n'), /\.golangci\.yml:.*generated output does not match overlay stamp/);
+});
+
+test('generated .golangci.yml linter drop is caught even when stamp and checksum are updated consistently', async () => {
+  const overlay = 'linters: {}\n';
+  const overlayHash = crypto.createHash('sha256').update(overlay).digest('hex');
+  const generated = `# GENERATED\n# overlay: .golangci.local.yml sha256:${overlayHash}\nlinters: {}\n`;
+  const generatedHash = crypto.createHash('sha256').update(generated).digest('hex');
+  const repo = makeFollower({
+    '.standards.json': json({ kit: 'https://raw.githubusercontent.com/HelloHowAreYouHaveANiceDay/standards/main', profiles: {} }),
+    '.golangci.yml': generated,
+    '.golangci.local.yml': overlay,
+    '.standards/generated.SHA256SUMS': `${generatedHash}  .golangci.yml\n`,
+  });
+  const bare = path.join(tmpdir('standards-bypass-origin-'), 'origin.git');
+  git(repo, 'clone', '-q', '--bare', repo, bare);
+  git(repo, 'remote', 'add', 'origin', bare);
+  git(repo, 'fetch', '-q', 'origin', 'main');
+  const newOverlay = '# harmless comment\nlinters: {}\n';
+  const newOverlayHash = crypto.createHash('sha256').update(newOverlay).digest('hex');
+  const newGenerated = `# GENERATED\n# overlay: .golangci.local.yml sha256:${newOverlayHash}\nlinters:\n  disable:\n    - errcheck\n`;
+  const newGeneratedHash = crypto.createHash('sha256').update(newGenerated).digest('hex');
+  fs.writeFileSync(path.join(repo, '.golangci.yml'), newGenerated);
+  fs.writeFileSync(path.join(repo, '.golangci.local.yml'), newOverlay);
+  fs.writeFileSync(path.join(repo, '.standards', 'generated.SHA256SUMS'), `${newGeneratedHash}  .golangci.yml\n`);
+  git(repo, 'add', '.golangci.yml', '.golangci.local.yml', '.standards/generated.SHA256SUMS');
+  git(repo, 'commit', '-q', '-m', 'drop linter via generated file with consistent stamp update');
+  const failures = await configRatchet(repo);
+  assert.match(failures.join('\n'), /\.golangci\.yml:.*disabled.*errcheck/);
 });
 
 test('the gate compares changed config with origin/main merge base', async () => {

@@ -1,5 +1,10 @@
 # base
 
+## 1.1.3
+
+- Fix config ratchet to also ratchet the generated `.golangci.yml` content itself (base vs head), closing the bypass where a linter drop in the generated file is hidden by updating the overlay stamp and touching `.golangci.local.yml` with a comment-only change.
+- Fix config ratchet to strip YAML quotes from key-value pair values so a threshold raised to a quoted number (e.g. `threshold: "200"`) is correctly caught.
+
 Root `.editorconfig` + `.gitattributes`, the gate `.standards/check.mjs` and the agent rules `.standards/RULES.md`.
 Every follower takes base first: it vendors check.mjs and makes the worktree LF.
 
