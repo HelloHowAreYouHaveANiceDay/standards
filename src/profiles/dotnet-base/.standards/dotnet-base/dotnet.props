@@ -19,6 +19,9 @@
          ProjectReferences that live in another repo's SDK, this does not. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+    <!-- NuGet audit (NU1900 = vulnerability feed unreachable, NU1901-1904 = new advisories) depends on the network and
+         the day, not on the code: shown, never a gate failure. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)dotnet.globalconfig" />

@@ -1,0 +1,8 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile dotnet-base). Do not edit.
+# Overrides: a severity line in the repo's own .editorconfig with a comment giving the reason.
+is_global = true
+
+# Unused suppressions fail, so a stale #pragma / SuppressMessage cannot hide.
+dotnet_diagnostic.IDE0079.severity = warning
+# Unused usings.
+dotnet_diagnostic.IDE0005.severity = warning

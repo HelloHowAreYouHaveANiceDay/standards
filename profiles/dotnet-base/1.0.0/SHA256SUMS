@@ -1,0 +1,5 @@
+ade2be078e936a861ea5b4fb6904427f434b355308d875d46c369c47fe2080e4  .standards/dotnet-base/RULES.md
+2421f4bb9f62508ad05bde78bcc1acca8f47149ad4381b3db4ab05947643941a  .standards/dotnet-base/check.json
+10c06b48b964720555e7367bb816291f2c0e937d048d1a10e1a13f5439e6874e  .standards/dotnet-base/dotnet.globalconfig
+178b1cf217f0f3ece966dfefed7da98e870c1762c76856f21e12412a33ceb68f  .standards/dotnet-base/dotnet.mjs
+131d5587798f489cc1e53e2fd67b3bcf625a63fc314033b70e91e42af55eb0a1  .standards/dotnet-base/dotnet.props

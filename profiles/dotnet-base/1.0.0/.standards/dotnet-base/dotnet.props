@@ -1,0 +1,33 @@
+<!-- Vendored by HelloHowAreYouHaveANiceDay/standards (profile dotnet-base). Do not edit.
+     Import from the repo's Directory.Build.props (one line, nearest file to the projects):
+       <Import Project="$(MSBuildThisFileDirectory).standards/dotnet-base/dotnet.props" />
+     Overrides: .editorconfig severity lines with a comment giving the reason (see .standards/dotnet-base/RULES.md). -->
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <!-- Pinned rule set: a newer SDK does not add rules until the profile bumps this. -->
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- IDE* style rules (dotnet.globalconfig / .editorconfig severities) run in the build. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- IDE0005 (unused usings) only runs in the build when the documentation file is generated. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Doc comments are optional: CS1591 (missing comment) and CS1573 (partial param tags) only exist because the
+         documentation file is generated for IDE0005, not because the repo wants XML docs. -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+    <!-- Directory-scoped, never -warnaserror on the command line: a command-line flag also reaches
+         ProjectReferences that live in another repo's SDK, this does not. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+    <!-- NuGet audit (NU1900 = vulnerability feed unreachable, NU1901-1904 = new advisories) depends on the network and
+         the day, not on the code: shown, never a gate failure. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)dotnet.globalconfig" />
+    <!-- dotnet-addin (when synced) relaxes rules whose fix needs an API that net4x/netstandard lack. A missing
+         directory matches nothing, so base alone is unaffected. -->
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)../dotnet-addin/*.globalconfig"
+                               Condition="$(TargetFramework.StartsWith('net4')) Or $(TargetFramework.StartsWith('netstandard'))" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,46 @@
+{
+  "profile": "dotnet-base",
+  "version": "1.0.0",
+  "tools": {
+    "dotnet-sdk-min": "10.0.100",
+    "AnalysisLevel": "10.0-recommended"
+  },
+  "commands": [
+    {
+      "id": "wiring",
+      "tool": "wiring",
+      "run": [
+        "node",
+        ".standards/dotnet-base/dotnet.mjs",
+        "wiring"
+      ]
+    },
+    {
+      "id": "suppressions",
+      "tool": "suppressions",
+      "run": [
+        "node",
+        ".standards/dotnet-base/dotnet.mjs",
+        "suppressions"
+      ]
+    },
+    {
+      "id": "format",
+      "tool": "dotnet format whitespace",
+      "run": [
+        "node",
+        ".standards/dotnet-base/dotnet.mjs",
+        "format"
+      ]
+    },
+    {
+      "id": "build",
+      "tool": "dotnet build",
+      "run": [
+        "node",
+        ".standards/dotnet-base/dotnet.mjs",
+        "build"
+      ]
+    }
+  ]
+}
