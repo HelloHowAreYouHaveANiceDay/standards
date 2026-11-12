@@ -1,0 +1,4 @@
+d3465de7bb94a185ebd5de38882a9f8375b4740afdd59c377276f6cce3308277  .standards/pwsh-base/PSScriptAnalyzerSettings.psd1
+3de105c3b622b5d3fb5945d0972cb09470bfe8cdec0733d9bab1508884109156  .standards/pwsh-base/RULES.md
+9589363311355373cf2505c502f8aa3eeb210c9714819f0b6ba59ec7c3155371  .standards/pwsh-base/check.json
+35b501290322820fadb4847dc7ecd4720657de4e1d36e86cd49fa7a4e2ec224c  .standards/pwsh-base/lint.ps1
