@@ -1,0 +1,3 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile rust-base); do not edit. Stable options only.
+# base's .gitattributes checks out LF everywhere.
+newline_style = "Unix"

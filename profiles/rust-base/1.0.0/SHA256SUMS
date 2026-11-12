@@ -1,0 +1,4 @@
+44970f9e91847e0f41abb9c784b1cd177f90f629d5dcb7a40efc388f9f740534  .standards/rust-base/RULES.md
+75696d646c1c1ec756a563fa6ed140ff6d9a24d9458c97ba0d5359f07d394ad4  .standards/rust-base/check.json
+907739c6143393c8ea6679447b5d056284126945ce755744282807d9f0840372  .standards/rust-base/rustfmt.toml
+dc3a81410c0b8b94302a4a6185aaad1a931295dd61b5688025a820ed09dfacf5  .standards/rust-base/tool.mjs

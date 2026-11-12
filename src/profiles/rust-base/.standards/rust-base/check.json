@@ -1,0 +1,45 @@
+{
+  "profile": "rust-base",
+  "version": "0.0.0",
+  "tools": {
+    "rust": "1.99.1"
+  },
+  "commands": [
+    {
+      "id": "rustfmt",
+      "tool": "rustfmt (rust 1.99.1)",
+      "run": [
+        "node",
+        ".standards/rust-base/tool.mjs",
+        "cargo",
+        "fmt",
+        "--all",
+        "--check",
+        "--",
+        "--config-path",
+        ".standards/rust-base/rustfmt.toml"
+      ]
+    },
+    {
+      "id": "clippy",
+      "tool": "clippy (rust 1.99.1)",
+      "run": [
+        "node",
+        ".standards/rust-base/tool.mjs",
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings",
+        "-D",
+        "clippy::allow_attributes",
+        "-D",
+        "clippy::allow_attributes_without_reason"
+      ]
+    }
+  ]
+}
