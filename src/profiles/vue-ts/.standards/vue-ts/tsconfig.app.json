@@ -1,0 +1,11 @@
+{
+  "//": "Vendored by HelloHowAreYouHaveANiceDay/standards (profile vue-ts). Do not edit; extend it from tsconfig.app.json.",
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}
