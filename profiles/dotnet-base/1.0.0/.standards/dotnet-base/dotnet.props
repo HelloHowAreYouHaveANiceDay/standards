@@ -5,6 +5,8 @@
 <Project>
   <PropertyGroup>
     <Nullable>enable</Nullable>
+    <!-- net4x defaults to C# 7.3, which rejects Nullable. 14 = the default of the pinned SDK line (10.x). -->
+    <LangVersion Condition="'$(LangVersion)' == ''">14</LangVersion>
     <!-- Pinned rule set: a newer SDK does not add rules until the profile bumps this. -->
     <AnalysisLevel>10.0-recommended</AnalysisLevel>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
