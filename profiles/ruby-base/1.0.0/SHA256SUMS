@@ -1,0 +1,4 @@
+81a7ee123580992a55741c5a2913048253e390eb7c9cb8f5d6d7d2c98ba1731a  .standards/ruby-base/RULES.md
+473f9d56f2ddb53527b6acdc1e0d5d0a00eafb1d18ef1000cfab573cf9274134  .standards/ruby-base/check.json
+feb9be0011dde9f0d0b7fe3848d83798739b1f24ef4275b8af73f157a0509c01  .standards/ruby-base/rubocop.yml
+c6eb59dd3f4f46002d8896c1eeea8cbd23af62f0d71e7121d18ef650d1a5e7e3  .standards/ruby-base/tool.mjs
