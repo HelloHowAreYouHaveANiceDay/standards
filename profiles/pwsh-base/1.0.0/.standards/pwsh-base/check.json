@@ -1,0 +1,22 @@
+{
+  "profile": "pwsh-base",
+  "version": "1.0.0",
+  "tools": {
+    "PSScriptAnalyzer": "1.25.0"
+  },
+  "commands": [
+    {
+      "id": "psscriptanalyzer",
+      "tool": "PSScriptAnalyzer 1.25.0",
+      "run": [
+        "pwsh",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".standards/pwsh-base/lint.ps1"
+      ]
+    }
+  ]
+}

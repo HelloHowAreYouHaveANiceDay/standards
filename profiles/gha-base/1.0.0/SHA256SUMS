@@ -1,0 +1,3 @@
+dd0a449f87a4e75d65d0428752c1f7d30f0b62879191c2e59e665a455d4b19e2  .standards/gha-base/RULES.md
+9a9a1718d45942ad211cf9a41187ef02c174a442648cb41f1931beca335c4732  .standards/gha-base/check.json
+3ac58e4115024a42c579f7d53d3667eee284ebfc28f633c80b325d7c8c956af6  .standards/gha-base/tool.mjs
