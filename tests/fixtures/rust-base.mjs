@@ -11,7 +11,7 @@ pub fn add(a: u32, b: u32) -> u32 {
     a + b
 }
 
-#[expect(dead_code, reason = "fixture: a reasoned expect that is fulfilled passes")]
+#[expect(dead_code, reason = "fixture: fulfilled and reasoned")]
 fn unused() {}
 
 #[cfg(test)]
@@ -39,9 +39,9 @@ export const fixture = {
     const cases = [
       ['unformatted code', CLEAN_LIB.replace('a + b', 'a+b'), (o) => /Diff in .*src[\\/]lib\.rs/.test(o) && /FAIL \[rust-base\/rustfmt/.test(o), 'fails rustfmt naming src/lib.rs'],
       ['a clippy finding', CLEAN_LIB.replace('    a + b\n', '    return a + b;\n'), (o) => /needless_return/.test(o) && /src[\\/]lib\.rs:6/.test(o) && /FAIL \[rust-base\/clippy/.test(o), 'fails clippy (needless_return) naming src/lib.rs:6'],
-      ['#[allow]', CLEAN_LIB.replace('#[expect(dead_code, reason = "fixture: a reasoned expect that is fulfilled passes")]', '#[allow(dead_code)]'), (o) => /allow_attributes/.test(o) && /src[\\/]lib\.rs:10/.test(o), 'fails clippy::allow_attributes naming src/lib.rs:10'],
-      ['a reasonless #[expect]', CLEAN_LIB.replace('#[expect(dead_code, reason = "fixture: a reasoned expect that is fulfilled passes")]', '#[expect(dead_code)]'), (o) => /allow_attributes_without_reason/.test(o) && /src[\\/]lib\.rs:10/.test(o), 'fails clippy::allow_attributes_without_reason naming src/lib.rs:10'],
-      ['a stale #[expect]', CLEAN_LIB.replace('fn unused() {}', 'pub fn unused() {}'), (o) => /unfulfilled_lint_expectations|this lint expectation is unfulfilled/.test(o) && /src[\\/]lib\.rs:10/.test(o), 'fails on an unfulfilled #[expect] naming src/lib.rs:10'],
+      ['#[allow]', CLEAN_LIB.replace('#[expect(dead_code, reason = "fixture: fulfilled and reasoned")]', '#[allow(dead_code)]'), (o) => /allow_attributes/.test(o) && /src[\\/]lib.rs:9/.test(o), 'fails clippy::allow_attributes naming src/lib.rs:9'],
+      ['a reasonless #[expect]', CLEAN_LIB.replace('#[expect(dead_code, reason = "fixture: fulfilled and reasoned")]', '#[expect(dead_code)]'), (o) => /allow_attributes_without_reason/.test(o) && /src[\\/]lib.rs:9/.test(o), 'fails clippy::allow_attributes_without_reason naming src/lib.rs:9'],
+      ['a stale #[expect]', CLEAN_LIB.replace('fn unused() {}', 'pub fn unused() {}'), (o) => /unfulfilled_lint_expectations|this lint expectation is unfulfilled/.test(o) && /src[\\/]lib.rs:9/.test(o), 'fails on an unfulfilled #[expect] naming src/lib.rs:9'],
     ];
     for (const [what, body, ok, msg] of cases) {
       fs.writeFileSync(lib, body);
@@ -49,7 +49,7 @@ export const fixture = {
       h.step(r.code === 1 && ok(r.out), `${what} ${msg}`, `exit ${r.code}\n${r.out}`);
     }
     // [lints] in the follower's Cargo.toml cannot relax the profile's command-line levels.
-    fs.writeFileSync(lib, CLEAN_LIB.replace('#[expect(dead_code, reason = "fixture: a reasoned expect that is fulfilled passes")]', '#[allow(dead_code)]'));
+    fs.writeFileSync(lib, CLEAN_LIB.replace('#[expect(dead_code, reason = "fixture: fulfilled and reasoned")]', '#[allow(dead_code)]'));
     const manifest = path.join(dir, 'Cargo.toml');
     const orig = fs.readFileSync(manifest);
     fs.appendFileSync(manifest, '\n[lints.clippy]\nallow_attributes = "allow"\n');
