@@ -65,7 +65,26 @@ const FIXTURES = [
   { id: 'go-strict-overlay', profiles: ['base@1.0.0', 'go-strict@1.0.0'], go: true, overlay: true },
   { id: 'vue-ts', profiles: ['base@1.0.0', 'vue-ts@1.0.0'], vue: true },
   { id: 'firebase-web', profiles: ['base@1.0.0', 'firebase-web@1.0.0'], firebase: true },
+  ...(await loadPlugins()),
 ].filter((f) => !only || only.includes(f.id));
+
+// Pluggable fixtures (one file per profile, so profiles land without touching this file):
+// tests/fixtures/<id>.mjs exports `fixture` = {
+//   id, profiles: ['base@1.0.0', '<name>@<x.y.z>'], files: { rel: text },
+//   prepare?(dir, h) -> boolean   // install tools after sync + commit; false skips the fixture
+//   inject?(dir, h)               // after the clean pass: write a defect, h.step(check fails), remove it, ...
+// }
+// h = { step(ok, msg, detail), check() -> {code, out}, git(...args), node(args, opts), run(cmd, args, opts), npm(args) }.
+async function loadPlugins() {
+  const dir = path.join(KIT_ROOT, 'tests', 'fixtures');
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.mjs')).sort()) {
+    const mod = await import(pathToFileURL(path.join(dir, f)).href);
+    out.push({ ...mod.fixture, plugin: true });
+  }
+  return out;
+}
 
 const kitUrl = pathToFileURL(KIT_ROOT).href;
 const lines = [];
@@ -83,6 +102,7 @@ for (const fx of FIXTURES) {
   if (fx.overlay) files['.golangci.local.yml'] = OVERLAY;
   if (fx.vue) Object.assign(files, VUE_FILES);
   if (fx.firebase) Object.assign(files, FB_FILES);
+  if (fx.files) Object.assign(files, fx.files);
   for (const f of Object.keys(files)) fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
   for (const [f, b] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), b);
   const s = node([SYNC, 'init', ...fx.profiles, '--kit', kitUrl], { cwd: dir });
@@ -99,8 +119,18 @@ for (const fx of FIXTURES) {
     step(i.code === 0, `${fx.id}: npm install (pinned tools)`, i.out);
     if (i.code !== 0) continue;
   }
+  const h = {
+    step: (ok, msg, detail = '') => step(ok, `${fx.id}: ${msg}`, detail),
+    check: () => check(dir),
+    git: (...a) => git(dir, ...a),
+    node: (a, o = {}) => node(a, { cwd: dir, ...o }),
+    run: (c, a, o = {}) => run(c, a, { cwd: dir, ...o }),
+    npm: (a) => npm(a, dir),
+  };
+  if (fx.prepare && !(await fx.prepare(dir, h))) continue;
   const clean = node([path.join(dir, '.standards', 'check.mjs')], { cwd: dir });
   step(clean.code === 0, `${fx.id}: check.mjs passes on the clean fixture`, clean.out);
+  if (fx.plugin) { if (fx.inject) await fx.inject(dir, h); continue; }
   if (fx.vue) { vueInjections(fx, dir); continue; }
   if (fx.firebase) { firebaseInjections(fx, dir); continue; }
   if (!fx.go) continue;
