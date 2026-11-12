@@ -7,7 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { pathToFileURL } from 'node:url';
-import { KIT_ROOT, tmpdir } from './helpers.mjs';
+import { KIT_ROOT, tmpdir, git } from './helpers.mjs';
 
 const DIR = path.join(KIT_ROOT, 'profiles', 'python-base', '1.0.0');
 const SD = path.join(DIR, '.standards', 'python-base');
@@ -62,6 +62,21 @@ test('config step: the follower config must extend the vendored one (ruff.toml, 
   assert.match(probe({ 'pyproject.toml': '[tool.ruff]\nline-length = 100\n' })[0], /pyproject\.toml: \[tool\.ruff\] does not set extend/);
   assert.match(probe({ 'pyproject.toml': '[project]\nname = "x"\n' })[0], /no Ruff config/, 'pyproject without [tool.ruff] is no config');
   assert.match(probe({ 'ruff.toml': 'extend = "other.toml"\n' })[0], /does not set extend/);
+});
+
+test('nested Ruff configs must extend (Ruff uses the closest config and does not merge)', () => {
+  const d = tmpdir('pb-nest-');
+  git(d, 'init', '-q');
+  fs.mkdirSync(path.join(d, 'sub'));
+  fs.mkdirSync(path.join(d, 'other'));
+  fs.writeFileSync(path.join(d, 'ruff.toml'), 'extend = "x"\n');
+  fs.writeFileSync(path.join(d, 'sub', 'ruff.toml'), '[lint]\nselect = ["F"]\n');
+  fs.writeFileSync(path.join(d, 'other', 'pyproject.toml'), '[project]\nname = "x"\n');
+  const p = tool.nestedProblems(d);
+  assert.equal(p.length, 1);
+  assert.match(p[0], /^sub\/ruff\.toml: nested Ruff config without `extend`/);
+  fs.writeFileSync(path.join(d, 'sub', 'ruff.toml'), 'extend = "../ruff.toml"\n');
+  assert.deepEqual(tool.nestedProblems(d), []);
 });
 
 test('archive readers: pinned linux tar.gz and windows zip downloaded from GitHub match their sha256 and unpack to a ruff binary', async (t) => {

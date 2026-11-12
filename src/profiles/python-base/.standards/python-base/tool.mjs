@@ -145,6 +145,11 @@ export function configProblems(root = ROOT) {
 
 // Is `extend = "<vendored>"` set in the given table ('tool.ruff'), or at the top level when table is null?
 function extendsVendored(text, table) {
+  const v = extendValue(text, table);
+  return v !== null && v.replace(/^\.\//, '') === EXTEND;
+}
+
+function extendValue(text, table) {
   let current = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/\s+#.*$/, '').trim();
@@ -152,21 +157,39 @@ function extendsVendored(text, table) {
     if (h) { current = h[1]; continue; }
     if (current !== table) continue;
     const m = /^extend\s*=\s*["']([^"']+)["']$/.exec(line);
-    if (m && m[1].replace(/^\.\//, '') === EXTEND) return true;
+    if (m) return m[1];
   }
-  return false;
+  return null;
+}
+
+// Ruff uses the CLOSEST config for each file and does not merge with the root one, so a tracked nested config
+// (subdir ruff.toml / .ruff.toml / pyproject.toml with [tool.ruff]) silently drops the profile unless it extends.
+export function nestedProblems(root = ROOT) {
+  const g = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28, windowsHide: true });
+  if (g.status !== 0) return [];
+  const out = [];
+  for (const f of g.stdout.split('\0').filter(Boolean)) {
+    const base = f.split('/').pop();
+    if (!f.includes('/') || f.startsWith('.standards/') || !['ruff.toml', '.ruff.toml', 'pyproject.toml'].includes(base)) continue;
+    let text;
+    try { text = fs.readFileSync(path.join(root, f), 'utf8'); } catch { continue; }
+    const table = base === 'pyproject.toml' ? 'tool.ruff' : null;
+    if (table && !/^\s*\[tool\.ruff(\.[^\]]*)?\]/m.test(text)) continue;
+    if (extendValue(text, table) === null) out.push(`${f}: nested Ruff config without \`extend\` -- Ruff uses it instead of the root config, dropping the profile's rules (fix: add extend = "<relative path to the root ruff.toml>" or delete it)`);
+  }
+  return out;
 }
 
 export async function main(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = argv;
   if (cmd === 'config') {
-    const p = configProblems(ROOT);
+    const p = [...configProblems(ROOT), ...nestedProblems(ROOT)];
     for (const l of p) console.log(`standards: FAIL [${TAG}/config] ${l}`);
     if (!p.length) console.log(`standards: [${TAG}/config] Ruff config extends ${EXTEND}`);
     return p.length ? 1 : 0;
   }
   if (cmd === 'ruff') {
-    const p = configProblems(ROOT);
+    const p = [...configProblems(ROOT), ...nestedProblems(ROOT)];
     if (p.length) { for (const l of p) console.log(`standards: FAIL [${TAG}/config] ${l}`); return 1; }
     const t = await ensureRuff();
     if (t.error) { console.log(`standards: FAIL [${TAG}/ruff] ${t.error}`); return 1; }

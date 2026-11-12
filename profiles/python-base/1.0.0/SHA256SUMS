@@ -1,4 +1,4 @@
-da84c79760ffc63936179a90ac6f1589a430e229694b7f550f2c5b663f7d8328  .standards/python-base/RULES.md
+5d2dceb1fa385ef422948a85cf6ffa5fda9698a6506f417a3dceb7029c6400a6  .standards/python-base/RULES.md
 271af6b9740b8011fee3de3263844b09acdd97160321a7eb492292d9b08859d5  .standards/python-base/check.json
 8eeeb0859db2483ece74175620468f5fa2115ba7b0e37ffc1229230f533aa87a  .standards/python-base/ruff.toml
-abaeaad9f7aa2cbad0c8b1fbe1a31e56ed930f5bb77fe6343a53a58f9fcc4f90  .standards/python-base/tool.mjs
+2e84482c0e45b3be0b4c1f2955a0102a58da448dcc80d31c001b09504e463ca4  .standards/python-base/tool.mjs

@@ -57,6 +57,14 @@ export const fixture = {
     h.step(r.code === 1 && /FAIL \[python-base\/config\] .*pyproject\.toml|FAIL \[python-base\/config\] no Ruff config/.test(r.out), 'a missing ruff.toml fails the config step', r.out);
     fs.writeFileSync(path.join(dir, 'ruff.toml'), orig);
 
+    put('app/ruff.toml', '[lint]\nselect = ["F"]\n');
+    r = h.check();
+    h.step(r.code === 1 && /FAIL \[python-base\/config\] app\/ruff\.toml: nested Ruff config without `extend`/.test(r.out), 'a nested ruff.toml that does not extend fails, naming app/ruff.toml', r.out);
+    put('app/ruff.toml', 'extend = "../ruff.toml"\n');
+    r = h.check();
+    h.step(r.code === 0, 'a nested ruff.toml that extends the root one passes', r.out);
+    rm('app/ruff.toml');
+
     r = h.check();
     h.step(r.code === 0, 'check.mjs passes again after the injections are removed', r.out);
   },

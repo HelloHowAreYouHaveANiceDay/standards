@@ -12,6 +12,14 @@ CI never fixes. Locally: `ruff check --fix` and `ruff format` (any Ruff of the p
 - No Python, uv or pip needed. The runner downloads the pinned Ruff release archive from GitHub releases, checks its
   sha256 against `check.json` `archives`, unpacks it into the standards cache (`$STANDARDS_CACHE`, else
   `%LOCALAPPDATA%\standards\cache` / `~/.cache/standards`), and re-hashes the binary on every use.
+- Ruff reads ONE config per directory (`.ruff.toml`, else `ruff.toml`, else `pyproject.toml` `[tool.ruff]`) and a
+  `ruff.toml` silently shadows `[tool.ruff]`. Move existing `[tool.ruff]` settings into `ruff.toml` (a repo that
+  already ran a smaller rule set, e.g. only F401/E9, now gets the profile's set; fix the findings in the bootstrap PR).
+- Ruff uses the closest config per file and does not merge it with the root one. A nested `ruff.toml` /
+  `.ruff.toml` / `pyproject.toml` with `[tool.ruff]` must therefore `extend` something (e.g. `extend = "../ruff.toml"`),
+  or the `config` step fails naming it.
+- Drop `ruff` from the follower's own dev dependencies unless it is the pinned version: two Ruff versions
+  disagree on formatting. Editors may use any Ruff; the gate always uses the pinned download.
 - `target-version` is read by Ruff from `requires-python` in the follower's `pyproject.toml`; set `target-version` in
   `ruff.toml` when there is none (UP rules follow it).
 
