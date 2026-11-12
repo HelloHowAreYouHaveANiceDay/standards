@@ -36,8 +36,10 @@ CI never runs `cargo fmt` without `--check`. Locally: `cargo +<pin> fmt --all --
   Lints that fire only inside macro expansions you do not control get a reasoned `#[expect]` on the call site.
 
 ## Formatting
-- rustfmt defaults, plus `newline_style = "Unix"`. The config is read through `--config-path`; an editor that ignores
-  it formats identically except for line endings (base's `.gitattributes` forces LF).
+- rustfmt defaults, written out (`newline_style = "Auto"`: each file keeps its own line ending, so a Windows
+  checkout with CRLF on disk passes; `"Unix"` would fail every file there). The config is read through
+  `--config-path`, so a root `rustfmt.toml` in the follower is ignored by the gate; an editor that reads it
+  would disagree with CI, so do not add one.
 - Only workspace members reachable from `mod` declarations are checked; files that no `mod` reaches are not.
 
 ## Existing debt (adoption only)

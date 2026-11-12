@@ -44,7 +44,7 @@ test('rust-base: tool.mjs is zero-dependency, shell-free, and pins via +<toolcha
 
 test('rust-base: rustfmt.toml uses stable options only; RULES.md documents the reasoned-expect policy', () => {
   const t = fs.readFileSync(path.join(std, 'rustfmt.toml'), 'utf8');
-  assert.match(t, /^newline_style = "Unix"$/m);
+  assert.match(t, /^newline_style = "Auto"$/m);
   assert.doesNotMatch(t, /unstable_features|^(imports_granularity|group_imports|wrap_comments)/m);
   const r = fs.readFileSync(path.join(std, 'RULES.md'), 'utf8');
   assert.match(r, /allow_attributes_without_reason/);
