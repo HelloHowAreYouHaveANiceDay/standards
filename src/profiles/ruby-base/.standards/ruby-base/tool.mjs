@@ -67,7 +67,7 @@ function ensureGems(tools) {
   fs.mkdirSync(home, { recursive: true });
   out(`standards: [${TAG}] installing ${Object.keys(tools).length} pinned gems for ruby ${ri.version} into ${home}`);
   const specs = Object.entries(tools).map(([n, v]) => `${n}:${v}`);
-  const r = spawnSync(rubyBin(), ['-S', 'gem', 'install', '--no-document', '--no-user-install', '--conservative', ...specs], { env: gemEnv(home), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
+  const r = spawnSync(rubyBin(), ['-e', 'require "rubygems/gem_runner"; Gem::GemRunner.new.run(ARGV)', 'install', '--no-document', '--no-user-install', '--conservative', ...specs], { env: gemEnv(home), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
   if (r.error || r.status !== 0) return { error: `gem install failed (${r.error ? r.error.message : `exit ${r.status}`}):\n${(r.stdout || '') + (r.stderr || '')}` };
   const p = installedProblems(home, tools);
   if (p.length) return { error: p.join('\n') };
