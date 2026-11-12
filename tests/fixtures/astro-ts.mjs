@@ -39,7 +39,7 @@ export const fixture = {
     const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
     const cases = [
       ['src/lib/save.ts', FLOATING, (o) => /src[\\/]lib[\\/]save\.ts[\s\S]*no-floating-promises/.test(o) && /FAIL \[astro-ts\/eslint 10\.14\.0\]/.test(o), 'a floating promise fails eslint (type-aware) naming src/lib/save.ts'],
-      ['src/pages/typed.astro', '---\nconst n: number = \'not a number\'\n---\n\n<p>{n}</p>\n', (o) => /typed\.astro:2:\d+ - error ts\(2322\)|typed\.astro[\s\S]*2322/.test(o) && /FAIL \[astro-ts\/astro-check 0\.9\.12\]/.test(o), 'a type error in .astro frontmatter fails astro check naming src/pages/typed.astro'],
+      ['src/pages/typed.astro', '---\nconst n: number = \'not a number\'\n---\n\n<p>{n}</p>\n', (o) => /typed\.astro:2:\d+ - error ts\(2322\)|typed\.astro[\s\S]*2322/.test(o) && /FAIL \[astro-ts\/astro check 0\.9\.12\]/.test(o), 'a type error in .astro frontmatter fails astro check naming src/pages/typed.astro'],
       ['src/pages/img.astro', '<img src="/a.png" />\n', (o) => /img\.astro[\s\S]*(alt-text|img-redundant|jsx-a11y)/.test(o) && /FAIL \[astro-ts\/eslint 10\.14\.0\]/.test(o), 'an <img> without alt fails the a11y rules naming src/pages/img.astro'],
       ['src/pages/ugly.astro', '<p   class="x">hi</p>\n', (o) => /ugly\.astro/.test(o) && /FAIL \[astro-ts\/prettier 3\.10\.0\]/.test(o), 'an unformatted .astro fails prettier --check naming src/pages/ugly.astro'],
       ['src/lib/dis.ts', 'export const y = 1 // eslint-disable-line no-console\n', (o) => /src[\\/]lib[\\/]dis\.ts[\s\S]*(Unused eslint-disable|require-description)/.test(o), 'an unused / reasonless eslint-disable fails naming src/lib/dis.ts'],
