@@ -12,7 +12,9 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- IDE0005 (unused usings) only runs in the build when the documentation file is generated. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Doc comments are optional: CS1591 (missing comment) and CS1573 (partial param tags) only exist because the
+         documentation file is generated for IDE0005, not because the repo wants XML docs. -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
     <!-- Directory-scoped, never -warnaserror on the command line: a command-line flag also reaches
          ProjectReferences that live in another repo's SDK, this does not. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -20,5 +22,9 @@
   </PropertyGroup>
   <ItemGroup>
     <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)dotnet.globalconfig" />
+    <!-- dotnet-addin (when synced) relaxes rules whose fix needs an API that net4x/netstandard lack. A missing
+         directory matches nothing, so base alone is unaffected. -->
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)../dotnet-addin/*.globalconfig"
+                               Condition="$(TargetFramework.StartsWith('net4')) Or $(TargetFramework.StartsWith('netstandard'))" />
   </ItemGroup>
 </Project>
