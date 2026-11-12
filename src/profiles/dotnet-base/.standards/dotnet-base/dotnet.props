@@ -1,0 +1,24 @@
+<!-- Vendored by HelloHowAreYouHaveANiceDay/standards (profile dotnet-base). Do not edit.
+     Import from the repo's Directory.Build.props (one line, nearest file to the projects):
+       <Import Project="$(MSBuildThisFileDirectory).standards/dotnet-base/dotnet.props" />
+     Overrides: .editorconfig severity lines with a comment giving the reason (see .standards/dotnet-base/RULES.md). -->
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <!-- Pinned rule set: a newer SDK does not add rules until the profile bumps this. -->
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- IDE* style rules (dotnet.globalconfig / .editorconfig severities) run in the build. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- IDE0005 (unused usings) only runs in the build when the documentation file is generated. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Directory-scoped, never -warnaserror on the command line: a command-line flag also reaches
+         ProjectReferences that live in another repo's SDK, this does not. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)dotnet.globalconfig" />
+  </ItemGroup>
+</Project>
