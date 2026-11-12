@@ -1,0 +1,139 @@
+{
+  "profile": "gha-base",
+  "version": "1.1.0",
+  "tools": {
+    "actionlint": {
+      "version": "1.7.12",
+      "assets": {
+        "linux-x64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+          "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+          "member": "actionlint"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz",
+          "sha256": "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6",
+          "member": "actionlint"
+        },
+        "win32-x64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip",
+          "sha256": "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9",
+          "member": "actionlint.exe"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz",
+          "sha256": "5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644",
+          "member": "actionlint"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz",
+          "sha256": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+          "member": "actionlint"
+        }
+      }
+    },
+    "shellcheck": {
+      "version": "0.11.0",
+      "assets": {
+        "linux-x64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz",
+          "sha256": "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6",
+          "member": "shellcheck"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.gz",
+          "sha256": "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc",
+          "member": "shellcheck"
+        },
+        "win32-x64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip",
+          "sha256": "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e",
+          "member": "shellcheck.exe"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.gz",
+          "sha256": "c2c15e08df0e8fbc374c335b230a7ee958c313fa5714817a59aa59f1aa594f51",
+          "member": "shellcheck"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.gz",
+          "sha256": "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f",
+          "member": "shellcheck"
+        }
+      }
+    },
+    "zizmor": {
+      "version": "1.32.0",
+      "assets": {
+        "linux-x64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b",
+          "member": "zizmor"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "cb152b207f815116d7fa1c1ee4614f61578803351395052908095e79adfd9fd0",
+          "member": "zizmor"
+        },
+        "win32-x64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-pc-windows-msvc.zip",
+          "sha256": "d284a16e09d9df4ce2c000357e7b59bd531be093bea5718a1ce225b449b59d49",
+          "member": "zizmor.exe"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-apple-darwin.tar.gz",
+          "sha256": "6983143c719ada6845a69cc4dd2bacc215f971662fecd8bbd2678388e5ce5969",
+          "member": "zizmor"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-apple-darwin.tar.gz",
+          "sha256": "6efed18c4539a663fd3c851a2be9533fd8456c4e646d9416206da059154a0d3c",
+          "member": "zizmor"
+        }
+      }
+    }
+  },
+  "commands": [
+    {
+      "id": "reasons",
+      "tool": "suppression reasons",
+      "run": [
+        "node",
+        ".standards/gha-base/tool.mjs",
+        "reasons"
+      ]
+    },
+    {
+      "id": "actionlint",
+      "tool": "actionlint 1.7.12 + shellcheck 0.11.0",
+      "run": [
+        "node",
+        ".standards/gha-base/tool.mjs",
+        "run",
+        "actionlint",
+        "-shellcheck={shellcheck}",
+        "-pyflakes=",
+        "-oneline",
+        "-no-color"
+      ]
+    },
+    {
+      "id": "zizmor",
+      "tool": "zizmor 1.32.0",
+      "run": [
+        "node",
+        ".standards/gha-base/tool.mjs",
+        "run",
+        "zizmor",
+        "--offline",
+        "--no-progress",
+        "--quiet",
+        "--color=never",
+        "--strict-collection",
+        "--persona=regular",
+        "--min-severity=low",
+        "."
+      ]
+    }
+  ]
+}

@@ -153,6 +153,15 @@ export function suppressionsWithoutReason(root) {
   return bad;
 }
 
+// ---- zizmor config: the vendored pinning policy applies only when the follower brings no config of its own ----
+// A follower-owned file (zizmor's native discovery locations) or an explicit --config / --no-config / ZIZMOR_CONFIG wins.
+const FOLLOWER_ZIZMOR_CONFIGS = ['.github/zizmor.yml', '.github/zizmor.yaml', 'zizmor.yml', 'zizmor.yaml'];
+export function zizmorConfigArgs(args = [], root = ROOT, env = process.env) {
+  if (env.ZIZMOR_CONFIG || args.some((a) => a === '--no-config' || a === '-c' || a === '--config' || a.startsWith('--config='))) return [];
+  if (FOLLOWER_ZIZMOR_CONFIGS.some((f) => fs.existsSync(path.join(root, f)))) return [];
+  return [`--config=${path.join(HERE, 'zizmor.yml')}`];
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const [cmd, target, ...rest] = argv;
   if (cmd === 'reasons') { // no tool needed: the pins are not read
@@ -174,6 +183,7 @@ export async function main(argv = process.argv.slice(2)) {
         for (const m of a.matchAll(/\{([a-z]+)\}/g)) if (!bins[m[1]]) bins[m[1]] = await ensureTool(m[1], pins);
       }
       const final = rest.map((a) => a.replace(/\{([a-z]+)\}/g, (_, n) => bins[n]));
+      if (target === 'zizmor') final.unshift(...zizmorConfigArgs(final));
       const r = spawnSync(bins[target], final, { cwd: ROOT, stdio: 'inherit', windowsHide: true, timeout: 10 * 60 * 1000 });
       if (r.error) { console.log(`standards: FAIL [${TAG}/${target}] could not start ${bins[target]}: ${r.error.message}`); return 1; }
       return r.status ?? 1;

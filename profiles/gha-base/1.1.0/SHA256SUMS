@@ -1,0 +1,4 @@
+3186d943e585006fcaae238d276aab8afabce215471831b2e3a92b1613774568  .standards/gha-base/RULES.md
+478878f8a67a7a59e674dcf6957d8022742d6c4f396faaf1fd2fd2df6aa2436b  .standards/gha-base/check.json
+f0fc652c03bc8c9799d1dda7cca1d7bf7f548ed6dd169cb624bfdd91206e43ca  .standards/gha-base/tool.mjs
+ff0ff04ae8dd72d15b027776ab57d26730c2980dc24f9de9b189d92a1c7aa411  .standards/gha-base/zizmor.yml
