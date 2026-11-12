@@ -1,0 +1,8 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile c-base). Do not edit.
+# Google style: the same 2-space indent as the base .editorconfig, one documented upstream
+# (https://google.github.io/styleguide/cppguide.html#Formatting), covers C and C++ alike.
+# Overrides: a nested .clang-format with `BasedOnStyle: InheritParentConfig` and a reason comment per key.
+# Vendored / third-party code: list it in the follower-owned .clang-format-ignore (gitignore syntax), with a reason.
+BasedOnStyle: Google
+LineEnding: LF
+InsertNewlineAtEOF: true

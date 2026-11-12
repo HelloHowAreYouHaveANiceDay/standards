@@ -1,0 +1,14 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile python-base); do not edit -- re-run sync.
+# A follower's own ruff.toml starts with: extend = ".standards/python-base/ruff.toml"
+# and adds its overrides below it (see .standards/python-base/RULES.md).
+
+[lint]
+# Ruff's defaults (E4, E7, E9, F) written out, plus a reasoned few (docs.astral.sh/ruff/linter/#rule-selection):
+select = [
+  "E4", "E7", "E9", "F", # Ruff defaults: pycodestyle errors that are bugs (not style) + Pyflakes
+  "B",      # flake8-bugbear: likely bugs (mutable defaults, bare raise-from, unused loop vars)
+  "I",      # isort: one import order, so diffs and formatting agree
+  "UP",     # pyupgrade: syntax matching the project's target-version
+  "PGH004", # blanket `# noqa`: a suppression must name its rule(s)
+  "RUF100", # unused `# noqa`: a suppression that suppresses nothing fails
+]
