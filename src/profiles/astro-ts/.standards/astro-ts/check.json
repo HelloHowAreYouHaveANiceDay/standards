@@ -1,0 +1,23 @@
+{
+  "profile": "astro-ts",
+  "version": "0.0.0",
+  "tools": {
+    "eslint": "10.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "eslint-plugin-astro": "3.2.1",
+    "eslint-plugin-jsx-a11y-x": "0.2.0",
+    "@astrojs/check": "0.9.12",
+    "eslint-config-prettier": "10.1.8",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "prettier": "3.10.0",
+    "prettier-plugin-astro": "1.1.2"
+  },
+  "peers": ["astro"],
+  "commands": [
+    { "id": "pins", "tool": "pins", "run": ["node", ".standards/astro-ts/tool.mjs", "pins"] },
+    { "id": "astro-check", "tool": "astro check 0.9.12", "run": ["node", ".standards/astro-ts/tool.mjs", "run", "@astrojs/check:astro-check", "--minimumSeverity", "hint"] },
+    { "id": "eslint", "tool": "eslint 10.14.0", "run": ["node", ".standards/astro-ts/tool.mjs", "run", "eslint", ".", "--max-warnings", "0"] },
+    { "id": "prettier", "tool": "prettier 3.10.0", "run": ["node", ".standards/astro-ts/tool.mjs", "run", "prettier", "--check", ".", "!.standards/**", "!.standards.json", "!**/package-lock.json", "!eslint-suppressions.json"] }
+  ]
+}

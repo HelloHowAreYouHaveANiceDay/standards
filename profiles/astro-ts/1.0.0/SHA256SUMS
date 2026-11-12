@@ -1,0 +1,6 @@
+09e1a1a5dbbf1c99047635ef8a22efcee7f98888ce61a2c6fde283824287f61c  .prettierrc.json
+54ff3344f89139f48885ef4c19eba36adafb42c653cda2cb1739aa7d37638872  .standards/astro-ts/RULES.md
+bbcefe2952d1746a7eace97073e4e1048a026686b7c81e7a1b14380fdb388489  .standards/astro-ts/check.json
+0a099b9484550967b001bd45195f323e8ef37fb260d86ae86a84206dd0fe147f  .standards/astro-ts/eslint.base.mjs
+e8b1805f8b8824b1a1a30b93216ad2de89156da8951d96679b1fc451e1cc4355  .standards/astro-ts/tool.mjs
+13d1b430e6ee304918a29d383ff6314788fc9f9d63b19b167daa74f7a31e2f5e  .standards/astro-ts/tsconfig.base.json
