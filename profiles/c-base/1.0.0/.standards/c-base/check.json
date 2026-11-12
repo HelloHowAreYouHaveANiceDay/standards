@@ -1,0 +1,65 @@
+{
+  "profile": "c-base",
+  "version": "1.0.0",
+  "tools": {
+    "clang-format": "23.1.5"
+  },
+  "wheels": {
+    "win-x64": {
+      "file": "clang_format-23.1.5-py2.py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/7b/67/b91fb3483ca5cdb468fa5e72d836736de5ec29154cc3f58718de6192bc12/clang_format-23.1.5-py2.py3-none-win_amd64.whl",
+      "sha256": "18a4a1a698dd52ed4e288c97d99e93910f8f9d0128b266f65021ecf39c85d034"
+    },
+    "win-arm64": {
+      "file": "clang_format-23.1.5-py2.py3-none-win_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/1a/67/91bb628e4dc1fe02b1682da34eb4297851f43bc423788f83530fb5036d46/clang_format-23.1.5-py2.py3-none-win_arm64.whl",
+      "sha256": "9318d1c237b05539b18ecb779575caf92e7cc7b7ceb39250ff01557fa7a6b0b1"
+    },
+    "win-x86": {
+      "file": "clang_format-23.1.5-py2.py3-none-win32.whl",
+      "url": "https://files.pythonhosted.org/packages/f3/59/0f6e3073b8d696e133cc3ae3b8a21e9fc21a8c49c149560550e0ddb107e2/clang_format-23.1.5-py2.py3-none-win32.whl",
+      "sha256": "144befc5299213b114b3012fc09e37f747686941eaa45e1f22413acaa28273b2"
+    },
+    "linux-x64": {
+      "file": "clang_format-23.1.5-py2.py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/0e/cc/06adcfb7dfaea4d2c1929202021d4afcdc26915dc75fc0c72d63855da553/clang_format-23.1.5-py2.py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "d97ce49911ba8c89ef3f3c0735a9c7818e4780ab4812c67d1c5fcd829d16ae52"
+    },
+    "linux-arm64": {
+      "file": "clang_format-23.1.5-py2.py3-none-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl",
+      "url": "https://files.pythonhosted.org/packages/24/6c/ecb0739fb3f1798098f4b63c0e22aa0fd5a1d639f3ae4235f8155935a1ef/clang_format-23.1.5-py2.py3-none-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl",
+      "sha256": "e8037e12eae19a9779e01ca6719b8d7f6a939ade8869b061912551c9748a27ad"
+    },
+    "linux-musl-x64": {
+      "file": "clang_format-23.1.5-py2.py3-none-musllinux_1_2_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/9a/c0/def5fd3d5e01e31a59c18e26ec0b8ee53a6bfe06be64f00a3dbdd7cab3e8/clang_format-23.1.5-py2.py3-none-musllinux_1_2_x86_64.whl",
+      "sha256": "1f3589ec54a5ce9baf73c0c4f7b6e3f9201635c8585b5812bfb71d5fa8782a12"
+    },
+    "linux-musl-arm64": {
+      "file": "clang_format-23.1.5-py2.py3-none-musllinux_1_2_aarch64.whl",
+      "url": "https://files.pythonhosted.org/packages/e0/f0/30e71bc30f2160be92dc1af940313c67a02c140cb0a0cbf48eef31c80053/clang_format-23.1.5-py2.py3-none-musllinux_1_2_aarch64.whl",
+      "sha256": "d2a72a532d7f0d35bb7fb7860a2881d14d25ef9a1c208fb965a2e29f0aa849ff"
+    },
+    "macos-x64": {
+      "file": "clang_format-23.1.5-py2.py3-none-macosx_10_9_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/61/b0/a1d8cd44d504469b4e11d39bb56b7201f8680cbf611d22c8aa3b29cc57fd/clang_format-23.1.5-py2.py3-none-macosx_10_9_x86_64.whl",
+      "sha256": "32ec7498f9f1672dff2e65624cf317a1fd64e48a4f582d6c172d440c511bff00"
+    },
+    "macos-arm64": {
+      "file": "clang_format-23.1.5-py2.py3-none-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/0a/a9/3a17b3eac861ae4d67dd1bed59672028ac66007da056691553ab6cfa1be5/clang_format-23.1.5-py2.py3-none-macosx_11_0_arm64.whl",
+      "sha256": "3fb740335d939dd02252cd5075050fc8858466b16cf9c1efa2f52da3baa816a7"
+    }
+  },
+  "commands": [
+    {
+      "id": "format",
+      "tool": "clang-format 23.1.5",
+      "run": [
+        "node",
+        ".standards/c-base/tool.mjs",
+        "format"
+      ]
+    }
+  ]
+}
