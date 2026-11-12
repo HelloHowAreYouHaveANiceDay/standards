@@ -1,0 +1,7 @@
+7080dfec14dfd99d79d8957f9beed9d4e897b273b61398222c71edd527ae8a9e  .prettierrc.json
+2f00444f80a8d79f919e671b99ffe7a8570860c0c08a2366e510b9414eccacc7  .standards/react-ts/RULES.md
+ba2c1225a0da5e84ccb9513262edf6e7d94386257f4356fd0bc811c75479d615  .standards/react-ts/check.json
+15130f12a662bf4f23a4ce169ed7b1d73eb03c4a053fd1015efb6fef9011c056  .standards/react-ts/eslint.base.mjs
+223af62115ca402b2b62391390098c045f2c8feaaf7f0b276cdb42f7b3c0816d  .standards/react-ts/tool.mjs
+ab495d6896ef72d9035141db1d9c262ec4c0633efdc180ced482e4c6f2129a0a  .standards/react-ts/tsconfig.app.json
+defe96c858775bf6049b1bf2ab219427d22d849610bf17d2c96fa9f750e0eaca  .standards/react-ts/tsconfig.node.json
