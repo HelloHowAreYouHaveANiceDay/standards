@@ -1,0 +1,48 @@
+{
+  "profile": "react-ts",
+  "version": "0.0.0",
+  "tools": {
+    "eslint": "10.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "@eslint/js": "10.0.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "eslint-config-prettier": "10.1.8",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "prettier": "3.10.0"
+  },
+  "commands": [
+    {
+      "id": "pins",
+      "tool": "pins",
+      "run": ["node", ".standards/react-ts/tool.mjs", "pins"]
+    },
+    {
+      "id": "typecheck",
+      "tool": "tsc 6.0.3",
+      "run": ["node", ".standards/react-ts/tool.mjs", "run", "typescript:tsc", "--build"]
+    },
+    {
+      "id": "eslint",
+      "tool": "eslint 10.14.0",
+      "run": ["node", ".standards/react-ts/tool.mjs", "run", "eslint", ".", "--max-warnings", "0"]
+    },
+    {
+      "id": "prettier",
+      "tool": "prettier 3.10.0",
+      "run": [
+        "node",
+        ".standards/react-ts/tool.mjs",
+        "run",
+        "prettier",
+        "--check",
+        ".",
+        "!.standards/**",
+        "!.standards.json",
+        "!**/package-lock.json",
+        "!eslint-suppressions.json"
+      ]
+    }
+  ]
+}

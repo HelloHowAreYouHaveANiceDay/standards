@@ -1,0 +1,17 @@
+{
+  "//": "Vendored by HelloHowAreYouHaveANiceDay/standards (profile ts-base). Do not edit; extend it from tsconfig.json. Strictness only: the follower picks its runtime (target, lib, module, types), e.g. \"extends\": [\"@tsconfig/node24/tsconfig.json\", \"./.standards/ts-base/tsconfig.json\"].",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}

@@ -1,0 +1,6 @@
+7080dfec14dfd99d79d8957f9beed9d4e897b273b61398222c71edd527ae8a9e  .prettierrc.json
+27e3c29c65058f4097142a946d19e571cecab224fc9cf85c3745e90a8a6e7f0f  .standards/ts-base/RULES.md
+b840da9372136eaea521ce918690c1cb1dc46d0cb7246520eecb90f40afd6e19  .standards/ts-base/check.json
+7b4f0aff9fbeb87bb691de50d58c488970a86eaca6c13b38c66fb9bf121b1903  .standards/ts-base/eslint.base.mjs
+184a1ac29599ee9fc79fc63eabe48639c8c8f66f1ae982c6ea317efe7f6a1eb3  .standards/ts-base/tool.mjs
+bb17fd5d61a86f780ddad3900ff6f44a22db7d71920c672ddc1284d0fed43767  .standards/ts-base/tsconfig.json
