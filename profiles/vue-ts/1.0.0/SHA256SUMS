@@ -1,0 +1,7 @@
+7080dfec14dfd99d79d8957f9beed9d4e897b273b61398222c71edd527ae8a9e  .prettierrc.json
+60a446c6b3ac047d7f0080ce1762e3c86017366ca169e6d42d39a55b4e60a7ea  .standards/vue-ts/RULES.md
+dcd42feb86adc5378150c188bbdf4caa55835c29b9c7ad3bc7892bfd0b8b6c3f  .standards/vue-ts/check.json
+739ebd1adf1889e70b7325ac4c36d893f7f13826d54f2fd3437dde9ffe1cb3f7  .standards/vue-ts/eslint.base.mjs
+9e95212c00e6ebf51262d1e8958e806b97b1ae42db083906047a072746798bc1  .standards/vue-ts/tool.mjs
+d9c7b2065d1eb8dd0b0c188548841cb3619e80f87cf63162d964f3d55b45ed08  .standards/vue-ts/tsconfig.app.json
+b4adec9c12e14733243a5c8cc7261439c9bd959d0a73dbacb13d22b1674bcd22  .standards/vue-ts/tsconfig.node.json

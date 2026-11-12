@@ -1,0 +1,67 @@
+{
+  "profile": "vue-ts",
+  "version": "0.0.0",
+  "tools": {
+    "eslint": "10.14.0",
+    "typescript": "6.0.3",
+    "vue-tsc": "3.3.14",
+    "typescript-eslint": "8.72.2",
+    "@vue/eslint-config-typescript": "14.9.0",
+    "eslint-plugin-vue": "10.12.1",
+    "eslint-config-prettier": "10.1.8",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "prettier": "3.10.0",
+    "@vue/tsconfig": "0.9.1"
+  },
+  "commands": [
+    {
+      "id": "pins",
+      "tool": "pins",
+      "run": [
+        "node",
+        ".standards/vue-ts/tool.mjs",
+        "pins"
+      ]
+    },
+    {
+      "id": "typecheck",
+      "tool": "vue-tsc 3.3.14",
+      "run": [
+        "node",
+        ".standards/vue-ts/tool.mjs",
+        "run",
+        "vue-tsc",
+        "--build"
+      ]
+    },
+    {
+      "id": "eslint",
+      "tool": "eslint 10.14.0",
+      "run": [
+        "node",
+        ".standards/vue-ts/tool.mjs",
+        "run",
+        "eslint",
+        ".",
+        "--max-warnings",
+        "0"
+      ]
+    },
+    {
+      "id": "prettier",
+      "tool": "prettier 3.10.0",
+      "run": [
+        "node",
+        ".standards/vue-ts/tool.mjs",
+        "run",
+        "prettier",
+        "--check",
+        ".",
+        "!.standards/**",
+        "!.standards.json",
+        "!**/package-lock.json",
+        "!eslint-suppressions.json"
+      ]
+    }
+  ]
+}

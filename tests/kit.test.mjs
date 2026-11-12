@@ -90,6 +90,29 @@ test('base: root .editorconfig (root = true, lf) and .gitattributes (* text=auto
   assert.match(ag, /\.golangci\.local\.yml/);
 });
 
+test('vue-ts: exact pins, gate order pins -> vue-tsc -> eslint -> prettier, all via the zero-dep tool runner', () => {
+  const dir = path.join(PROFILES, 'vue-ts/1.0.0');
+  const cj = JSON.parse(fs.readFileSync(path.join(dir, '.standards/vue-ts/check.json'), 'utf8'));
+  for (const [n, v] of Object.entries(cj.tools)) assert.match(v, /^\d+\.\d+\.\d+$/, `${n} pinned exactly`);
+  assert.match(cj.tools.typescript, /^6\.0\./, 'typescript stays on 6.0.x until typescript-eslint/vue-tsc support TS 7');
+  assert.deepEqual(cj.commands.map((c) => c.id), ['pins', 'typecheck', 'eslint', 'prettier']);
+  for (const c of cj.commands) assert.deepEqual(c.run.slice(0, 2), ['node', '.standards/vue-ts/tool.mjs']);
+  assert.ok(cj.commands[2].run.includes('--max-warnings'));
+  assert.ok(!cj.commands.some((c) => c.run.includes('--fix') || c.run.includes('--write')), 'CI never fixes');
+  const es = fs.readFileSync(path.join(dir, '.standards/vue-ts/eslint.base.mjs'), 'utf8');
+  for (const s of ['recommendedTypeChecked', "'flat/essential'", 'require-description', "reportUnusedDisableDirectives: 'error'", 'skipFormatting']) assert.ok(es.includes(s), s);
+  const ts = JSON.parse(fs.readFileSync(path.join(dir, '.standards/vue-ts/tsconfig.app.json'), 'utf8'));
+  assert.equal(ts.extends, '@vue/tsconfig/tsconfig.dom.json');
+  assert.equal(ts.compilerOptions.noUncheckedIndexedAccess, true);
+});
+
+test('firebase-web: one offline lint command; RULES.md documents the public marker', () => {
+  const dir = path.join(PROFILES, 'firebase-web/1.0.0');
+  const cj = JSON.parse(fs.readFileSync(path.join(dir, '.standards/firebase-web/check.json'), 'utf8'));
+  assert.deepEqual(cj.commands.map((c) => c.run), [['node', '.standards/firebase-web/lint.mjs']]);
+  assert.match(fs.readFileSync(path.join(dir, '.standards/firebase-web/RULES.md'), 'utf8'), /standards: public -- <reason>/);
+});
+
 // ------------------------------------------------------------ append-only (inject)
 function appendOnlyRepo() {
   const dir = tmpdir('standards-ao-');

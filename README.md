@@ -19,8 +19,11 @@ sync.mjs                        init / sync / bump (run from a kit clone after `
 who.mjs                         read-only: which repo follows which profile@version
 ```
 
-Profiles (v1): `base` (root `.editorconfig`, `.gitattributes`, `.standards/check.mjs`, `.standards/RULES.md`),
-`go-base` and `go-strict` (standalone golangci v2 configs; pick one). Semver: major = unchanged code can newly fail;
+Profiles: `base` (root `.editorconfig`, `.gitattributes`, `.standards/check.mjs`, `.standards/RULES.md`),
+`go-base` and `go-strict` (standalone golangci v2 configs; pick one), `vue-ts` (Vue 3 + TS + Vite: type-aware ESLint,
+Prettier, `vue-tsc --build`, exact pins checked offline by a zero-dep `tool.mjs`; follower-owned `eslint.config.mjs`
+and `tsconfig.*.json` extend the vendored files) and `firebase-web` (offline lint: rules tracked, not open, loaded by
+a rules test; no committed keys; pinned CLI). Each profile's rules: `.standards/<name>/RULES.md`. Semver: major = unchanged code can newly fail;
 minor = an autofixable or off-by-default rule, or a relaxation; patch = comments/docs.
 
 ## Follower use
@@ -29,6 +32,7 @@ minor = an autofixable or off-by-default rule, or a relaxation; patch = comments
 git clone --depth 1 https://github.com/HelloHowAreYouHaveANiceDay/standards ~/standards && (cd ~/standards && npm ci)
 cd <follower>
 node ~/standards/sync.mjs init base@1.0.0 go-strict@1.0.0   # manifest, copies, locks, AGENTS.md line, CI snippet
+# Vue + Firebase: init base@1.0.0 vue-ts@1.0.0 firebase-web@1.0.0, then npm i -D -E <the pins the gate names>
 node ~/standards/sync.mjs sync                              # idempotent; regenerates .golangci.yml from the overlay
 node ~/standards/sync.mjs bump go-strict [--major]          # newest within the major
 node .standards/check.mjs                                   # the gate (CI runs this); --locks-only skips tools

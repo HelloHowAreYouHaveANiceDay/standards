@@ -1,0 +1,11 @@
+{
+  "profile": "firebase-web",
+  "version": "0.0.0",
+  "commands": [
+    {
+      "id": "firebase-lint",
+      "tool": "lint",
+      "run": ["node", ".standards/firebase-web/lint.mjs"]
+    }
+  ]
+}
