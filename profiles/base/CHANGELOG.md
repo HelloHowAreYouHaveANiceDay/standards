@@ -3,6 +3,14 @@
 Root `.editorconfig` + `.gitattributes`, the gate `.standards/check.mjs` and the agent rules `.standards/RULES.md`.
 Every follower takes base first: it vendors check.mjs and makes the worktree LF.
 
+## 1.1.1
+
+- Tighten the config ratchet's line reporting and limit pinned-kit reads to changed profile content.
+
+## 1.1.0
+
+- Add a config ratchet to the follower gate: reject increased ESLint suppressions, weaker golangci overlays, removed or downgraded standards profiles, opt-outs, and edits to pinned kit files.
+
 ## 1.0.0
 
 - First release: `.editorconfig` (root, utf-8, LF, final newline, trim trailing whitespace; tabs for Go/Make,

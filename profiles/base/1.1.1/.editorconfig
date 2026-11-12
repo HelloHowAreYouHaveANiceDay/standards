@@ -1,0 +1,37 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile base). Do not edit.
+# Overrides: a nested .editorconfig WITHOUT root = true, with a comment giving the reason.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[{Makefile,makefile,GNUmakefile,*.mk}]
+indent_style = tab
+
+[*.{cs,csx,vb,fs}]
+indent_size = 4
+
+[*.{py,pyi}]
+indent_size = 4
+
+[*.rs]
+indent_size = 4
+
+[*.{ps1,psm1,psd1}]
+indent_size = 4
+
+[*.{bat,cmd}]
+end_of_line = crlf
+
+[*.md]
+# Two trailing spaces are a Markdown line break.
+trim_trailing_whitespace = false
