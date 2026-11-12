@@ -37,6 +37,7 @@ Profiles (pick `base` plus at most one per language; each profile's rules: `.sta
 | `ruby-base` | Ruby (SketchUp extensions) | RuboCop + rubocop-sketchup, reasoned disables |
 | `pwsh-base` | PowerShell | PSScriptAnalyzer (pinned), reasoned suppressions |
 | `gha-base` | GitHub Actions workflows | actionlint + shellcheck + zizmor (sha256-pinned binaries) |
+| `ci-base` | GitHub Actions pipeline shape | zero-dep `wf.mjs` (C1 C2 G1 G2 G6 L1 D2 K1 S4 O3, spec--ci-standards); use with `gha-base` |
 | `firebase-web` | Firebase web apps (any language profile) | offline lint: rules tracked, not open, loaded by a rules test; no keys; pinned CLI |
 
 Tools install themselves, pinned and cross-platform (zero-dep `.standards/<name>/tool.mjs` runners or check.mjs's
