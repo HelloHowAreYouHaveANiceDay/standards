@@ -1,0 +1,15 @@
+{
+  "profile": "ci-base",
+  "version": "1.0.0",
+  "commands": [
+    {
+      "id": "wf",
+      "tool": "wf",
+      "run": [
+        "node",
+        ".standards/ci-base/wf.mjs",
+        ".github/workflows"
+      ]
+    }
+  ]
+}

@@ -16,7 +16,6 @@ import { parseDocument, LineCounter, isMap } from './vendor/yaml.mjs';
 export const MUST = new Set(['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'allow', 'parse']);
 export const RULE_IDS = ['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'O3'];
 
-const ALLOW_RE = /#\s*standards-allow\b\s*([A-Za-z]\w*)?\s*(?::\s*(\S.*?))?\s*$/;
 const VERIFY_IF = /always\(\)|!cancelled\(\)|steps\.[\w-]+\.outcome\s*==\s*'failure'/;
 const DEPLOY_RE = /\bwrangler(?:@[^\s]+)?\s+(?:pages\s+)?(?:deploy|publish)\b|\bfirebase(?:-tools)?(?:@[^\s]+)?\s+deploy\b|FirebaseExtended\/action-hosting-deploy|cloudflare\/(?:wrangler|pages)-action/i;
 const G2_RE = /playwright|\bemulators:(?:exec|start)\b|\bfirebase(?:-tools)?(?:@[^\s]+)?\s+emulators\b/i;
@@ -81,11 +80,14 @@ export function lintWorkflow(text, file, ctx = { names: new Set(), lane: false }
   let leading = true;
   const header = [];
   lines.forEach((l, i) => {
-    const m = ALLOW_RE.exec(l);
+    const m = /#\s*standards-allow\b(.*)$/.exec(l);
     const commentOnly = /^\s*#/.test(l);
     if (!commentOnly && l.trim() !== '') leading = false;
-    if (!m || !/#\s*standards-allow\b/.test(l)) return;
-    const id = m[1] || ''; const reason = m[2] || '';
+    if (!m) return;
+    const idm = /^\s*([A-Za-z]\w*)/.exec(m[1]);
+    const id = idm ? idm[1] : '';
+    const rm = /^\s*:\s*(\S.*?)\s*$/.exec(m[1].slice(idm ? idm[0].length : 0));
+    const reason = rm ? rm[1] : '';
     if (!reason) { found.push({ id: 'allow', line: i + 1, msg: `standards-allow${id ? ` ${id}` : ''} without a reason (write "# standards-allow <ID>: <why>")` }); return; }
     if (!id || (!RULE_IDS.includes(id))) { found.push({ id: 'allow', line: i + 1, msg: `standards-allow names an unknown rule${id ? ` "${id}"` : ''}`, warn: true }); return; }
     add(i + 1, id);
@@ -225,7 +227,7 @@ export function lintWorkflow(text, file, ctx = { names: new Set(), lane: false }
       const need = new Set(needsOf(ok));
       const missing = ids.filter((i) => i !== 'ci-ok' && isObj(jobs[i]) && runsOnPr(jobs[i]) && !need.has(i));
       if (missing.length) find('G1', okLine, `\`ci-ok\` does not need every PR job: missing ${missing.join(', ')}`);
-      const body = JSON.stringify({ if: ok.if, steps: ok.steps });
+      const body = [str(ok.if), ...(Array.isArray(ok.steps) ? ok.steps : []).map((s) => `${str(s && s.if)} ${str(s && s.run)} ${s && s.with ? JSON.stringify(s.with) : ''}`)].join('\n');
       if (!(/failure/.test(body) && /cancelled/.test(body))) find('G1', okLine, '`ci-ok` must fail when a needed job is `failure` or `cancelled` (check needs.*.result)');
     }
     const pr = tr.raw.pull_request || tr.raw.pull_request_target || {};
