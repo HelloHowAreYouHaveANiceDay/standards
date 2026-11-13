@@ -1,0 +1,10 @@
+# repo-gate baseline block (HelloHowAreYouHaveANiceDay/standards). Keep every line below.
+# Policy (libo, 2026-10-29): gate only significant risk -- permissions, data leak, or anything that could damage
+# libo's or pyline's reputation. The owner's review is required on deploy / CI / auth / secret / migration paths,
+# enforced by the repo-gate ruleset (code-owner review). Normal product code is NOT gated.
+/.github/            @HelloHowAreYouHaveANiceDay
+/.github/CODEOWNERS  @HelloHowAreYouHaveANiceDay
+wrangler.toml        @HelloHowAreYouHaveANiceDay
+auth/                @HelloHowAreYouHaveANiceDay
+*secret*             @HelloHowAreYouHaveANiceDay
+migrations/          @HelloHowAreYouHaveANiceDay

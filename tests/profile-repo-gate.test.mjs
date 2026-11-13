@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { KIT_ROOT, tmpdir, node } from './helpers.mjs';
 
-const DIR = process.env.REPO_GATE_SRC ? path.join(KIT_ROOT, 'src/profiles/repo-gate') : path.join(KIT_ROOT, 'profiles/repo-gate/1.0.0');
+const DIR = process.env.REPO_GATE_SRC ? path.join(KIT_ROOT, 'src/profiles/repo-gate') : path.join(KIT_ROOT, 'profiles/repo-gate/1.1.0');
 const STD = path.join(DIR, '.standards/repo-gate');
 const GATE = path.join(STD, 'gate.mjs');
 const g = await import(pathToFileURL(GATE).href);
@@ -19,6 +19,7 @@ const good = () => ({
     { type: 'required_status_checks', ruleset_id: 1, parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: 'ci-ok' }] } }],
   rulesets: { 1: { bypass_actors: [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }] } },
   classic: null,
+  settings: { allow_auto_merge: true, delete_branch_on_merge: true },
   codeowners: g.BLOCK + '/functions/  @someone\n',
   factory: { login: 'bot', role_name: 'write' },
 });
@@ -72,6 +73,13 @@ test('item 6: the factory account is admin, or its permission is unreadable; not
   f = good(); f.factory.role_name = null; assert.deepEqual(items(f), []);
 });
 
+test('item 7: auto-merge or delete-branch-on-merge off, or unreadable', () => {
+  let f = good(); f.settings.allow_auto_merge = false; assert.deepEqual(items(f), [7]);
+  f = good(); f.settings.delete_branch_on_merge = false; assert.deepEqual(items(f), [7]);
+  f = good(); f.settings = {}; assert.deepEqual(items(f), [7, 7]);
+  assert.deepEqual(g.SETTINGS, { allow_auto_merge: true, delete_branch_on_merge: true });
+});
+
 test('an archived repo fails as item 0', () => assert.deepEqual(items({ archived: true }), [0]));
 
 test('readFacts: reads through the api function, GET only, and an unreadable repo throws', () => {
@@ -80,7 +88,7 @@ test('readFacts: reads through the api function, GET only, and an unreadable rep
   const api = (args) => {
     calls.push(args);
     const p = args[args.length - 1];
-    if (p === 'repos/o/r') return { ok: true, json: { default_branch: 'main', archived: false } };
+    if (p === 'repos/o/r') return { ok: true, json: { default_branch: 'main', archived: false, allow_auto_merge: true, delete_branch_on_merge: true } };
     if (p.startsWith('repos/o/r/rules/branches/main')) return { ok: true, json: good().rules };
     if (p === 'repos/o/r/rulesets/1') return { ok: true, json: { bypass_actors: good().rulesets[1].bypass_actors } };
     if (p.endsWith('/protection')) return { ok: false, err: 'gh: Branch not protected (HTTP 404)' };
@@ -112,5 +120,5 @@ test('released files: check.json runs the offline gate; RULES.md has a row per i
   assert.equal(cj.profile, 'repo-gate');
   assert.deepEqual(cj.commands, [{ id: 'codeowners', tool: 'codeowners', run: ['node', '.standards/repo-gate/gate.mjs', '--offline'] }]);
   const rules = fs.readFileSync(path.join(STD, 'RULES.md'), 'utf8');
-  for (const i of [1, 2, 3, 4, 5, 6]) assert.match(rules, new RegExp(`^\\| ${i} \\|`, 'm'));
+  for (const i of [1, 2, 3, 4, 5, 6, 7]) assert.match(rules, new RegExp(`^\\| ${i} \\|`, 'm'));
 });
