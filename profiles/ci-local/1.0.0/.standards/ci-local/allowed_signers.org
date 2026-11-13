@@ -1,0 +1,4 @@
+# ci-local allowed signers (org file, vendored, read from the DEFAULT branch tip only).
+# Line form (no wildcard principals; namespaces and valid-before are mandatory, 90-day expiry):
+#   dim@host1 namespaces="ci-result@hhay",valid-before="20270215" ssh-ed25519 AAAA...
+# No keys are enrolled in 1.0.0: the harness hosts add theirs in the follow-up slice.
