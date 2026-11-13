@@ -17,7 +17,12 @@ profiles/<name>/CHANGELOG.md    one `## x.y.z` heading per release
 src/profiles/<name>/            working copy of the next release; `node scripts/release.mjs <name> <x.y.z>` snapshots it
 sync.mjs                        init / sync / bump (run from a kit clone after `npm ci`; never in CI)
 who.mjs                         read-only: which repo follows which profile@version
+standards.mjs                   agent-facing CLI: describe/list/init/check/apply/upgrade/explain, --json (docs/standards-cli.md)
 ```
+
+Agents: `node <kit>/standards.mjs check --json --root <repo>` reports drift (exit 1); `apply --dry-run` /
+`upgrade --dry-run` show the plan; `explain <rule-id>` prints a rule. Unlike `sync.mjs`, the CLI never overwrites a
+hand-edited or unmanaged file without `--force`.
 
 Profiles (pick `base` plus at most one per language; each profile's rules: `.standards/<name>/RULES.md`):
 
