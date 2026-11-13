@@ -6,6 +6,8 @@ gates, the factory only reads. Two halves:
 - `CODEOWNERS.block`: the sensitive-paths block. Every line must sit in the repo's CODEOWNERS (any of
   `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS`), owned as written. A repo may add its own lines (e.g.
   `firebase.json`, `/functions/`); a later line that re-assigns a block pattern to someone else breaks the block.
+- `settings.json`: the repo settings the factory relies on (auto-merge, head-branch cleanup). Set with
+  `gh api -X PATCH repos/<o>/<r> -F allow_auto_merge=true -F delete_branch_on_merge=true`.
 - `ruleset.json`: the GitHub ruleset `sensitive-paths-gate` on the default branch. An existing ruleset is tightened to
   it, never loosened: its own bypass actors, extra rules and required checks stay.
 
@@ -25,5 +27,6 @@ Gates:
 | 4 | Up-to-date branches are not required (`strict_required_status_checks_policy` false; classic `strict` false) |
 | 5 | Every `--required` context is a required status check (ruleset or classic); `/.github/` is CODEOWNERS-gated |
 | 6 | The factory account's permission on the repo is not admin |
+| 7 | Repo settings match `settings.json`: `allow_auto_merge` true (GitHub auto-merge available) and `delete_branch_on_merge` true |
 
 Archived repos fail (item 0): they cannot carry a rule; drop them from the factory config.

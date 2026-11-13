@@ -1,0 +1,15 @@
+{
+  "profile": "repo-gate",
+  "version": "1.1.0",
+  "commands": [
+    {
+      "id": "codeowners",
+      "tool": "codeowners",
+      "run": [
+        "node",
+        ".standards/repo-gate/gate.mjs",
+        "--offline"
+      ]
+    }
+  ]
+}

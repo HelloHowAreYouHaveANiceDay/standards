@@ -6,7 +6,7 @@
 //
 // Live mode reads the repo with `gh api` (GET only; any token that can read the repo's rules) and prints one line
 // per failed item: `repo-gate: FAIL <repo> [<item>] <what>`. Exit 0 = the repo passes, 1 = it fails, 2 = usage or
-// an unreadable fact (unreadable is never a pass). The items are RULES.md 1-6.
+// an unreadable fact (unreadable is never a pass). The items are RULES.md 1-7.
 //
 // Zero dependencies; `evaluate()` is pure so the kit tests drive it with recorded facts.
 import fs from 'node:fs';
@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const BLOCK = fs.readFileSync(path.join(HERE, 'CODEOWNERS.block'), 'utf8');
 export const RULESET = JSON.parse(fs.readFileSync(path.join(HERE, 'ruleset.json'), 'utf8'));
+export const SETTINGS = JSON.parse(fs.readFileSync(path.join(HERE, 'settings.json'), 'utf8'));
 export const CODEOWNERS_LOCATIONS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']; // GitHub's lookup order
 export const ADMIN_ROLE_ID = 5;
 
@@ -83,6 +84,12 @@ export function evaluate(f, opts = {}) {
   // 6. the factory account is not an admin
   if (f.factory && f.factory.role_name === undefined) fail(6, `permission of ${f.factory.login} unreadable`);
   else if (f.factory && f.factory.role_name === 'admin') fail(6, `${f.factory.login} is an admin`);
+  // 7. repo settings: auto-merge allowed, head branches deleted on merge (settings.json)
+  for (const [k, want] of Object.entries(SETTINGS)) {
+    const have = (f.settings || {})[k];
+    if (have === undefined) fail(7, `repo setting ${k} unreadable`);
+    else if (have !== want) fail(7, `repo setting ${k} is ${have}, must be ${want}`);
+  }
   return out;
 }
 
@@ -98,6 +105,7 @@ const need = (res, what) => { if (!res.ok) throw new Unreadable(`${what}: ${res.
 export function readFacts(repo, factoryLogin, api = gh) {
   const info = need(api([`repos/${repo}`]), 'repo');
   const f = { repo, default_branch: info.default_branch, archived: !!info.archived };
+  f.settings = Object.fromEntries(Object.keys(SETTINGS).map((k) => [k, info[k]]));
   if (f.archived) return f;
   const b = encodeURIComponent(f.default_branch);
   f.rules = need(api([`repos/${repo}/rules/branches/${b}?per_page=100`]), 'branch rules');
