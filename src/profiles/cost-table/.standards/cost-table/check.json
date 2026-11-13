@@ -1,0 +1,15 @@
+{
+  "profile": "cost-table",
+  "version": "0.0.0",
+  "commands": [
+    {
+      "id": "table",
+      "tool": "table",
+      "run": [
+        "node",
+        ".standards/cost-table/table.mjs",
+        "--check"
+      ]
+    }
+  ]
+}
