@@ -14,15 +14,13 @@
 // Exit codes: 0 ok/clean, 1 drift/conflict/not-found, 2 usage error, 3 kit or internal error.
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { kitSource, plan as syncPlan, apply as syncApply, cmpSemver, DEFAULT_KIT, AGENTS_LINE } from './sync.mjs';
+import { kitSource, plan as syncPlan, apply as syncApply, diffPlan, cmpSemver, DEFAULT_KIT, AGENTS_LINE } from './sync.mjs';
 
 export const VERSION = '0.1.0';
 const SELF_KIT = path.dirname(fileURLToPath(import.meta.url));
 const VER_RE = /^\d+\.\d+\.\d+$/;
 const SUMS_RE = /^([0-9a-f]{64}) {2}(\S(?:.*\S)?)$/;
-const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 export const AGENTS_CLI_LINE = 'Standards drift: `node <standards-kit>/standards.mjs check --json` (fix: `apply`, bump: `upgrade`, rule text: `explain <id>`).';
 export const EXIT = { ok: 0, drift: 1, 'usage-error': 2, error: 3 };
 
@@ -58,8 +56,6 @@ function parseSums(text) {
   for (const line of text.split('\n')) { const x = SUMS_RE.exec(line); if (x) m.set(x[2], x[1]); }
   return m;
 }
-const abs = (root, rel) => path.join(root, ...rel.split('/'));
-const exists = (root, rel) => fs.existsSync(abs(root, rel));
 
 function readManifest(root) {
   const f = path.join(root, '.standards.json');
@@ -73,49 +69,6 @@ async function kitText(src, rel) { try { return (await src.get(rel)).toString('u
 async function versionsOf(src, name) {
   const t = await kitText(src, `profiles/${name}/VERSIONS`);
   return t ? t.split('\n').map((v) => v.trim()).filter((v) => VER_RE.test(v)).sort(cmpSemver) : [];
-}
-
-// Every sha the repo's existing locks vouch for: these files are managed and untouched when sha matches.
-function managedShas(root) {
-  const std = path.join(root, '.standards');
-  const out = new Map();
-  if (!fs.existsSync(std)) return out;
-  for (const f of fs.readdirSync(std).filter((x) => x.endsWith('.SHA256SUMS'))) {
-    for (const [rel, sha] of parseSums(fs.readFileSync(path.join(std, f), 'utf8'))) out.set(rel, sha);
-  }
-  return out;
-}
-
-// What syncApply would do, plus conflicts (files it would overwrite or delete that the locks do not vouch for).
-function diffPlan(root, p, manifest) {
-  const managed = managedShas(root);
-  const want = new Map([...p.files, ...p.generated]);
-  for (const [n, buf] of p.locks) want.set(`.standards/${n}.SHA256SUMS`, buf);
-  if (manifest) want.set('.standards.json', Buffer.from(`${JSON.stringify({ kit: manifest.kit, profiles: manifest.profiles }, null, 2)}\n`));
-  const write = []; const remove = []; const conflicts = [];
-  for (const [rel, buf] of want) {
-    if (!exists(root, rel)) { write.push(rel); continue; }
-    const cur = fs.readFileSync(abs(root, rel));
-    if (cur.equals(buf)) continue;
-    write.push(rel);
-    if (rel.startsWith('.standards/') && rel.endsWith('.SHA256SUMS')) continue; // locks are always ours
-    if (rel === '.standards.json') continue;
-    const sha = sha256(cur);
-    if (managed.get(rel) === sha) continue;
-    conflicts.push({ path: rel, reason: managed.has(rel) ? 'hand-edited' : 'unmanaged' });
-  }
-  const keep = new Set([...p.files.keys(), ...p.generated.keys()]);
-  const std = path.join(root, '.standards');
-  for (const f of fs.existsSync(std) ? fs.readdirSync(std).filter((x) => x.endsWith('.SHA256SUMS')) : []) {
-    const name = f.slice(0, -'.SHA256SUMS'.length);
-    for (const [rel, sha] of parseSums(fs.readFileSync(path.join(std, f), 'utf8'))) {
-      if (keep.has(rel) || !exists(root, rel)) continue;
-      remove.push(rel);
-      if (sha256(fs.readFileSync(abs(root, rel))) !== sha) conflicts.push({ path: rel, reason: 'hand-edited' });
-    }
-    if (name !== 'generated' && !p.locks.has(name)) remove.push(`.standards/${f}`);
-  }
-  return { write: write.sort(), remove: [...new Set(remove)].sort(), conflicts };
 }
 
 async function verifyLocksFn() {

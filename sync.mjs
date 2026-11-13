@@ -8,6 +8,9 @@
 //
 // Options: --kit <https-url | file:///path | path>  fetch from here instead of .standards.json's "kit"
 //          --root <dir>                              follower root (default: cwd)
+//          --force                                   overwrite/delete files the locks do not vouch for (an
+//                                                    unmanaged file at a managed path, or a hand-edited one);
+//                                                    without it sync refuses, names them, and writes nothing
 //
 // Writes, per profile: the kit files byte for byte (LF as released), the kit's SHA256SUMS verbatim as the lock
 // `.standards/<name>.SHA256SUMS`. Go: `.golangci.local.yml` (follower-owned) is merged into the profile's config
@@ -214,6 +217,61 @@ export async function plan(root, manifest, src) {
   return { files, locks, generated };
 }
 
+// -------------------------------------------------------------------- ownership (shared with standards.mjs)
+function parseSumsLoose(text) {
+  const m = new Map();
+  for (const line of text.split('\n')) { const x = SUMS_RE.exec(line); if (x) m.set(x[2], x[1]); }
+  return m;
+}
+
+// Every sha the repo's existing locks vouch for: these files are managed and untouched when sha matches.
+function managedShas(root) {
+  const std = path.join(root, '.standards');
+  const out = new Map();
+  if (!fs.existsSync(std)) return out;
+  for (const f of fs.readdirSync(std).filter((x) => x.endsWith('.SHA256SUMS'))) {
+    for (const [rel, sha] of parseSumsLoose(fs.readFileSync(path.join(std, f), 'utf8'))) out.set(rel, sha);
+  }
+  return out;
+}
+
+// What apply() would do, plus conflicts: files it would overwrite or delete that the locks do not vouch for
+// ('unmanaged' = no lock lists it, e.g. the repo's own .gitattributes; 'hand-edited' = sha differs from the lock).
+export function diffPlan(root, p, manifest) {
+  const abs = (rel) => path.join(root, ...rel.split('/'));
+  const managed = managedShas(root);
+  const want = new Map([...p.files, ...p.generated]);
+  for (const [n, buf] of p.locks) want.set(`.standards/${n}.SHA256SUMS`, buf);
+  if (manifest) want.set('.standards.json', Buffer.from(`${JSON.stringify({ kit: manifest.kit, profiles: manifest.profiles }, null, 2)}\n`));
+  const write = []; const remove = []; const conflicts = [];
+  for (const [rel, buf] of want) {
+    if (!fs.existsSync(abs(rel))) { write.push(rel); continue; }
+    const cur = fs.readFileSync(abs(rel));
+    if (cur.equals(buf)) continue;
+    write.push(rel);
+    if (rel.startsWith('.standards/') && rel.endsWith('.SHA256SUMS')) continue; // locks are always ours
+    if (rel === '.standards.json') continue;
+    if (managed.get(rel) === sha256(cur)) continue;
+    conflicts.push({ path: rel, reason: managed.has(rel) ? 'hand-edited' : 'unmanaged' });
+  }
+  const keep = new Set([...p.files.keys(), ...p.generated.keys()]);
+  const std = path.join(root, '.standards');
+  for (const f of fs.existsSync(std) ? fs.readdirSync(std).filter((x) => x.endsWith('.SHA256SUMS')) : []) {
+    const name = f.slice(0, -'.SHA256SUMS'.length);
+    for (const [rel, sha] of parseSumsLoose(fs.readFileSync(path.join(std, f), 'utf8'))) {
+      if (!safeRel(rel) || keep.has(rel) || !fs.existsSync(abs(rel))) continue;
+      remove.push(rel);
+      if (sha256(fs.readFileSync(abs(rel))) !== sha) conflicts.push({ path: rel, reason: 'hand-edited' });
+    }
+    if (name !== 'generated' && !p.locks.has(name)) remove.push(`.standards/${f}`);
+  }
+  return { write: write.sort(), remove: [...new Set(remove)].sort(), conflicts };
+}
+
+export function conflictMessage(conflicts) {
+  return `conflict: ${conflicts.length} file(s) would be overwritten or deleted that the locks do not vouch for: ${conflicts.map((c) => `${c.path} (${c.reason})`).join(', ')}. Move the change to an overlay file, or re-run with --force.`;
+}
+
 // -------------------------------------------------------------------- apply (writes)
 function writeIfChanged(abs, buf) {
   if (fs.existsSync(abs) && fs.readFileSync(abs).equals(buf)) return false;
@@ -293,8 +351,10 @@ function report(verb, r) {
   for (const f of r.removed) console.log(`  - ${f}`);
 }
 
-async function syncTo(root, manifest, src, writeManifest) {
+async function syncTo(root, manifest, src, writeManifest, force) {
   const p = await plan(root, manifest, src);
+  const d = diffPlan(root, p, writeManifest ? manifest : null);
+  if (d.conflicts.length && !force) throw new Error(conflictMessage(d.conflicts));
   const r = apply(root, p, writeManifest ? manifest : null);
   await postVerify(root);
   return r;
@@ -307,6 +367,7 @@ export async function main(argv) {
   const kitArg = opt('--kit');
   const root = path.resolve(opt('--root') || process.cwd());
   const major = flag('--major');
+  const force = flag('--force');
   const [cmd, ...rest] = args;
 
   if (cmd === 'init') {
@@ -319,7 +380,7 @@ export async function main(argv) {
       profiles[m[1]] = m[2];
     }
     const manifest = { kit: DEFAULT_KIT, profiles };
-    const r = await syncTo(root, manifest, kitSource(kitArg || DEFAULT_KIT), true);
+    const r = await syncTo(root, manifest, kitSource(kitArg || DEFAULT_KIT), true, force);
     report('init', r);
     console.log(`sync: AGENTS.md line ${appendAgentsLine(root)}`);
     console.log('\nSuggested CI job (add under `jobs:`; copy runs-on and setup steps from the build job):\n');
@@ -328,7 +389,7 @@ export async function main(argv) {
   }
   if (cmd === 'sync') {
     const manifest = readManifest(root);
-    report('sync', await syncTo(root, manifest, kitSource(kitArg || manifest.kit), false));
+    report('sync', await syncTo(root, manifest, kitSource(kitArg || manifest.kit), false, force));
     return 0;
   }
   if (cmd === 'bump') {
@@ -346,12 +407,12 @@ export async function main(argv) {
       return 0;
     }
     const next = { ...manifest, profiles: { ...manifest.profiles, [name]: to } };
-    const r = await syncTo(root, next, src, true);
+    const r = await syncTo(root, next, src, true, force);
     console.log(`sync: bump ${name} ${from} -> ${to}`);
     report('bump', r);
     return 0;
   }
-  throw new Error('usage: sync.mjs init <profile@x.y.z>... | sync | bump <profile> [--major]  [--kit <url|path>] [--root <dir>]');
+  throw new Error('usage: sync.mjs init <profile@x.y.z>... | sync | bump <profile> [--major]  [--force] [--kit <url|path>] [--root <dir>]');
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

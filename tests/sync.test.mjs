@@ -186,3 +186,69 @@ test('bump: newest within the major; --major crosses; stale files removed; up-to
   assert.match(r.stdout, /demo 1\.10\.0 -> 2\.0\.0/);
   assert.equal(read(repo, 'new.txt').toString(), 'two\n');
 });
+
+// Ownership: sync never clobbers a file the locks do not vouch for (same rule as standards.mjs) unless --force.
+function conflictKit() {
+  const mk = (ver, extra) => ({ '.standards/demo/check.json': checkJson('demo', ver, { commands: [] }), ...extra });
+  return makeKit((k) => {
+    writeProfile(k, 'demo', '1.0.0', mk('1.0.0', { 'own.txt': 'kit v1\n', 'old.txt': 'old\n' }));
+    writeProfile(k, 'demo', '1.1.0', mk('1.1.0', { 'own.txt': 'kit v2\n' }));
+  });
+}
+
+test('init over a pre-existing unmanaged file at a managed path refuses (exit 1), names it, writes nothing', () => {
+  const kit = conflictKit();
+  const repo = makeFollower({ 'own.txt': 'mine\n' });
+  const before = snapshot(repo);
+  const r = sync(repo, 'init', 'base@1.0.0', 'demo@1.0.0', '--kit', kit);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.stderr, /conflict/i);
+  assert.match(r.stderr, /own\.txt \(unmanaged\)/);
+  assert.match(r.stderr, /--force/);
+  assert.deepEqual(snapshot(repo), before);
+});
+
+test('sync refuses to overwrite a hand-edited managed file; bump refuses to delete a hand-edited stale one', () => {
+  const kit = conflictKit();
+  const repo = makeFollower();
+  assert.equal(sync(repo, 'init', 'base@1.0.0', 'demo@1.0.0', '--kit', kit).code, 0);
+  fs.writeFileSync(path.join(repo, 'own.txt'), 'hand edit\n');
+  let r = sync(repo, 'sync', '--kit', kit);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.stderr, /own\.txt \(hand-edited\)/);
+  assert.equal(read(repo, 'own.txt').toString(), 'hand edit\n');
+  fs.writeFileSync(path.join(repo, 'own.txt'), 'kit v1\n');
+  fs.writeFileSync(path.join(repo, 'old.txt'), 'hand edit\n');
+  const before = snapshot(repo);
+  r = sync(repo, 'bump', 'demo', '--kit', kit);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.stderr, /old\.txt \(hand-edited\)/);
+  assert.deepEqual(snapshot(repo), before, 'stale hand-edited file kept, nothing written');
+});
+
+test('--force keeps the overwrite/delete behaviour (init, sync and bump)', () => {
+  const kit = conflictKit();
+  const repo = makeFollower({ 'own.txt': 'mine\n' });
+  let r = sync(repo, 'init', 'base@1.0.0', 'demo@1.0.0', '--kit', kit, '--force');
+  assert.equal(r.code, 0, r.out);
+  assert.equal(read(repo, 'own.txt').toString(), 'kit v1\n');
+  fs.writeFileSync(path.join(repo, 'own.txt'), 'hand edit\n');
+  r = sync(repo, 'sync', '--kit', kit, '--force');
+  assert.equal(r.code, 0, r.out);
+  assert.equal(read(repo, 'own.txt').toString(), 'kit v1\n');
+  fs.writeFileSync(path.join(repo, 'old.txt'), 'hand edit\n');
+  r = sync(repo, 'bump', 'demo', '--kit', kit, '--force');
+  assert.equal(r.code, 0, r.out);
+  assert.ok(!fs.existsSync(path.join(repo, 'old.txt')));
+  assert.equal(read(repo, 'own.txt').toString(), 'kit v2\n');
+});
+
+test('unchanged managed files still update and stale ones are deleted without --force', () => {
+  const kit = conflictKit();
+  const repo = makeFollower();
+  assert.equal(sync(repo, 'init', 'base@1.0.0', 'demo@1.0.0', '--kit', kit).code, 0);
+  const r = sync(repo, 'bump', 'demo', '--kit', kit);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(read(repo, 'own.txt').toString(), 'kit v2\n');
+  assert.ok(!fs.existsSync(path.join(repo, 'old.txt')));
+});
