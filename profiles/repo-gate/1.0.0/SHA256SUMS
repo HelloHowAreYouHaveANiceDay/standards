@@ -1,0 +1,5 @@
+9ff90262ca5d9ae1daf819c21f4a2a2f944f6857040a85af7ad8d7f8b129142d  .standards/repo-gate/CODEOWNERS.block
+d719c6347950c751d0720d2655bf792f9ac6b379d850c97b0edcaa4fc76f41ad  .standards/repo-gate/RULES.md
+556a072a3a74715b8f4216c29004d5a37307221cee5900754cdb18e83119675a  .standards/repo-gate/check.json
+39271e8cffa66ec6dfdbc2b3eac1d25dff5dd817679fe9b60887e87f1053ce75  .standards/repo-gate/gate.mjs
+f35d80e8ff217cba569681f93d58c1db9d0f37b0080267fcb6fe5acaddc535df  .standards/repo-gate/ruleset.json
