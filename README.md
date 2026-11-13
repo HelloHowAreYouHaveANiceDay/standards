@@ -44,6 +44,8 @@ Profiles (pick `base` plus at most one per language; each profile's rules: `.sta
 | `gha-base` | GitHub Actions workflows | actionlint + shellcheck + zizmor (sha256-pinned binaries) |
 | `ci-base` | GitHub Actions pipeline shape | zero-dep `wf.mjs` (C1 C2 G1 G2 G6 L1 D2 K1 S4 O3, spec--ci-standards); use with `gha-base` |
 | `repo-gate` | every factory repo (code-host gate, not lint) | CODEOWNERS block offline; `gate.mjs --repo` verifies the live ruleset (factory spec 9) |
+| `sdlc-docs` | every repo (docs of record, not lint) | zero-dep `docs.mjs` (R1-R5: README/AGENTS/CLAUDE shim, spec + ADR front matter, status, ids, approved specs); `--scaffold` copies absent templates |
+| `cost-table` | data only (dim-factory pricing source) | `table.mjs --check` validates model/sub/runner rows; unknown model lookup throws |
 | `firebase-web` | Firebase web apps (any language profile) | offline lint: rules tracked, not open, loaded by a rules test; no keys; pinned CLI |
 
 Tools install themselves, pinned and cross-platform (zero-dep `.standards/<name>/tool.mjs` runners or check.mjs's
