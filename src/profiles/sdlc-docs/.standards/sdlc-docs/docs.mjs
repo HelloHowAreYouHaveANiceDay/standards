@@ -144,7 +144,10 @@ export function scaffold(root) {
       } else if (r === 'AGENTS.md') {
         const cur = read(dst);
         const next = refreshBlock(cur, tpl);
-        if (next === null) log.push(`kept    ${r} (no single kit:sdlc-docs block to refresh -- add the block from the template)`);
+        if (next === null) {
+          if (cur.includes(BEGIN) || cur.includes(END)) log.push(`kept    ${r} (kit:sdlc-docs markers are malformed -- fix by hand)`);
+          else { fs.writeFileSync(dst, `${cur.replace(/\n*$/, '\n')}\n${tpl.slice(tpl.indexOf(BEGIN), tpl.indexOf(END) + END.length)}\n`); log.push(`updated ${r} (kit block appended)`); }
+        }
         else if (next !== cur) { fs.writeFileSync(dst, next); log.push(`updated ${r} (kit block)`); }
         else log.push(`kept    ${r}`);
       } else log.push(`kept    ${r}`);

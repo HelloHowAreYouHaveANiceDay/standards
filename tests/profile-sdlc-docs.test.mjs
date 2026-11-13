@@ -44,8 +44,13 @@ test('scaffold refreshes only the AGENTS.md kit block; notes outside it survive'
   assert.ok(now.startsWith('# mine\n') && now.includes('- a worker note') && !now.includes('(stale)'));
   assert.equal(now.split(d.BEGIN).length, 2);
   const none = path.join(r, 'x'); put(none, 'AGENTS.md', '# no block\n');
-  assert.match(node([DOCS, '--scaffold', none]).out, /kept\s+AGENTS\.md \(no single kit:sdlc-docs block/);
-  assert.equal(fs.readFileSync(path.join(none, 'AGENTS.md'), 'utf8'), '# no block\n');
+  assert.match(node([DOCS, '--scaffold', none]).out, /updated AGENTS\.md \(kit block appended\)/);
+  const appended = fs.readFileSync(path.join(none, 'AGENTS.md'), 'utf8');
+  assert.ok(appended.startsWith('# no block\n\n' + d.BEGIN) && appended.trimEnd().endsWith(d.END));
+  assert.equal(node([DOCS, '--scaffold', none]).out.includes('updated'), false); // idempotent
+  const broken = path.join(r, 'y'); put(broken, 'AGENTS.md', `# x\n${d.BEGIN}\nno end marker\n`);
+  assert.match(node([DOCS, '--scaffold', broken]).out, /markers are malformed/);
+  assert.equal(fs.readFileSync(path.join(broken, 'AGENTS.md'), 'utf8'), `# x\n${d.BEGIN}\nno end marker\n`);
 });
 
 test('the scaffolded AGENTS.md block equals spec Appendix A markers and CLAUDE.md is exactly the shim', () => {
