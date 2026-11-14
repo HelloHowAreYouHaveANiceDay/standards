@@ -5,6 +5,11 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.0.1
+
+- Enrolls the first harness signer in `allowed_signers.org`: `hermes@win1` (ed25519, namespace `ci-result@hhay`,
+  `valid-before=20270212`, 90 days). No code change; `ci.mjs` is byte-identical to 1.0.0. Pilot slice S2.
+
 ## 1.0.0
 
 - First release. Verbs: `run` (clean detached checkout, `--checkout` makes one; suites for this host's OS;

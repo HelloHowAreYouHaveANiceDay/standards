@@ -1,0 +1,3 @@
+9df494d739bed08ab2b19f23c022ea97af877f8b50f765e2e7fc5cb5acab91b7  .standards/ci-local/allowed_signers.org
+b5c4e68650ae16732cbf95ab5dd035f933894e143d0ff04be55e35c2c0b6d161  .standards/ci-local/check.json
+cab360260a428a4ae68787f5f8398810b872292fc2b4b0866db503baea2ddc6d  .standards/ci-local/ci.mjs
