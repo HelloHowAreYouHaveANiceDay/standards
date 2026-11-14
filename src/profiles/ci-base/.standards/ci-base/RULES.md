@@ -31,6 +31,7 @@ name `deploy` in `runs-on`; without it, only the literal-fallback half of L1 app
 | D2 | MUST | A deploy job (calls `wrangler deploy`, `firebase deploy`, `FirebaseExtended/action-hosting-deploy`, `cloudflare/wrangler-action`, or has `environment:`) has a later step that runs after a failed deploy (`if: always()`, `!cancelled()` or `steps.<id>.outcome == 'failure'`) and is not `continue-on-error`; `continue-on-error` on the deploy step is allowed only with such a step. Jobs of workflows that never run on main, and PR-only jobs (previews), are exempt |
 | K1 | MUST | `actions/setup-go` sets `cache: false`; no `actions/cache` for Go, uv, NuGet or cargo directories |
 | S4 | MUST | No `ubuntu-latest` literal or fallback in `runs-on` or a matrix (public repos: allow comment) |
+| N1 | SHOULD | `actions/setup-node` takes `node-version-file` (`.nvmrc`), not a literal `node-version` (expressions such as a matrix value are fine) |
 | O3 | SHOULD | Every `workflow_run.workflows` entry matches a workflow `name:` (or file path) in `.github/workflows` |
 
 What counts as "runs on main": the workflow has a `push` trigger that is not tag-only and not branch-filtered away
@@ -53,6 +54,15 @@ block, `ui` off), S6 (Dependabot `github-actions`, grouped, quarterly, `cooldown
 - **Rollback is a re-run of a known-good SHA**; keep a documented one-liner (`workflow_dispatch` with a `ref` input).
 - **Same-repo previews only.** Guard preview deploys with
   `github.event.pull_request.head.repo.full_name == github.repository` and skip bots that get no secrets.
+- **A runner outage is not a code failure.** GitHub has no queue timeout: a job waiting for an offline self-hosted runner
+  sits queued for hours, then is cancelled (seen 4-10h on four repos). `timeout-minutes` (C2) only starts at job start.
+  Triage a red main whose jobs were `cancelled` or never started as infra first: bring the runner back, then
+  `gh run rerun --failed`; do not patch code. The rerun and the main-health watch belong to the builder (factory), not to a
+  retry loop in the workflow, and there is no hosted fallback (S4 bans `ubuntu-latest`).
+- **Emulators clean up after themselves.** A run cancelled mid `emulators:exec` leaves orphans holding the emulator
+  ports and fails the next run on the same runner (K3: free ports at run time, a cleanup step with `if: always()`).
+- **No tight wall-clock budgets in tests.** Shared runners are loaded (one suite ran 8-50 min). Assert ordering or
+  relative timing, or inject a clock; if a real delay is unavoidable, give the stub at least 2x the asserted bound.
 - **Log the deployed version** (commit SHA in the job summary and in a `/version` file or inlined chunk) so the D2
   verify step has something to compare.
 

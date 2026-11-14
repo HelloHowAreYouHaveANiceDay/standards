@@ -4,7 +4,7 @@
 //   node .standards/ci-base/wf.mjs [.github/workflows]
 //
 // Offline, no network, no credentials; the only dependency is the vendored single-file YAML parser.
-// Rules: C1 C2 G1 G2 G6 L1 D2 K1 S4 (MUST -> FAIL) and O3 (SHOULD -> WARN); see RULES.md.
+// Rules: C1 C2 G1 G2 G6 L1 D2 K1 S4 (MUST -> FAIL) and O3, N1 (SHOULD -> WARN); see RULES.md.
 // Every finding prints `standards: FAIL|WARN [ci-base/wf] <file>:<line>: <message> (<id>)`; exit 1 only on a FAIL.
 // Suppress one finding with `# standards-allow <ID>: <reason>` on the offending line, on the first line of the
 // job, on the comment line directly above either, or in the file's leading comment block. A reasonless allow FAILS.
@@ -14,7 +14,7 @@ import { pathToFileURL } from 'node:url';
 import { parseDocument, LineCounter, isMap } from './vendor/yaml.mjs';
 
 export const MUST = new Set(['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'allow', 'parse']);
-export const RULE_IDS = ['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'O3'];
+export const RULE_IDS = ['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'O3', 'N1'];
 
 const VERIFY_IF = /always\(\)|!cancelled\(\)|steps\.[\w-]+\.outcome\s*==\s*'failure'/;
 const DEPLOY_RE = /\bwrangler(?:@[^\s]+)?\s+(?:pages\s+)?(?:deploy|publish)\b|\bfirebase(?:-tools)?(?:@[^\s]+)?\s+deploy\b|FirebaseExtended\/action-hosting-deploy|cloudflare\/(?:wrangler|pages)-action/i;
@@ -207,6 +207,9 @@ export function lintWorkflow(text, file, ctx = { names: new Set(), lane: false }
       const u = str(s.uses);
       if (/^actions\/setup-go@/.test(u) && !(s.with && (s.with.cache === false || str(s.with.cache) === 'false'))) {
         find('K1', stepLine(i), 'actions/setup-go must set `cache: false` (cache-save hangs on persistent runners)', line);
+      }
+      if (/^actions\/setup-node@/.test(u) && s.with && s.with['node-version'] != null && !/\$\{\{/.test(str(s.with['node-version']))) {
+        find('N1', stepLine(i), 'actions/setup-node pins a literal `node-version`; use `node-version-file: .nvmrc` so CI cannot drift from the repo toolchain', line);
       }
       if (/^actions\/cache(\/(restore|save))?@/.test(u) && s.with && CACHE_PATH_RE.test(str(s.with.path))) {
         find('K1', stepLine(i), 'no actions/cache for Go/uv/NuGet/cargo directories on persistent runners', line);
