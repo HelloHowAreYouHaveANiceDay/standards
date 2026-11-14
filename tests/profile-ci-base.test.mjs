@@ -1,4 +1,4 @@
-// ci-base 1.0.0: the workflow lint (wf.mjs) rule by rule, the allow mechanism, the CLI, and the released files.
+// ci-base 1.1.0: the workflow lint (wf.mjs) rule by rule, the allow mechanism, the CLI, and the released files.
 // Compliant stack workflows and injected violations come from tests/fixtures/ci-base.mjs (the same text the kit's
 // fixture-sync syncs into a follower).
 import test from 'node:test';
@@ -10,7 +10,7 @@ import { KIT_ROOT, sha256, tmpdir, node } from './helpers.mjs';
 import * as fx from './fixtures/ci-base.mjs';
 
 // CI_BASE_SRC=1 runs against src/profiles (development); the default is the immutable released snapshot.
-const DIR = process.env.CI_BASE_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-base') : path.join(KIT_ROOT, 'profiles/ci-base/1.0.0');
+const DIR = process.env.CI_BASE_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-base') : path.join(KIT_ROOT, 'profiles/ci-base/1.1.0');
 const STD = path.join(DIR, '.standards/ci-base');
 const wf = await import(pathToFileURL(path.join(STD, 'wf.mjs')).href);
 const lint = (text, file = '.github/workflows/ci.yml', ctx = { names: new Set(['CI']), lane: true }) => wf.lintWorkflow(text, file, ctx);
@@ -32,7 +32,7 @@ test('released files: check.json is one wf command; the vendored parser matches 
   const rules = fs.readFileSync(path.join(STD, 'RULES.md'), 'utf8');
   for (const id of wf.RULE_IDS) assert.ok(new RegExp(`\\| ${id} \\| (MUST|SHOULD) \\|`).test(rules), `RULES.md row for ${id}`);
   for (const s of ['# standards-allow <ID>: <reason>', 'self-hosted-runner.labels', 'Guidance']) assert.ok(rules.includes(s), s);
-  assert.ok(wf.RULE_IDS.every((id) => (id === 'O3') === !wf.MUST.has(id)), 'O3 is the only SHOULD');
+  assert.ok(wf.RULE_IDS.every((id) => (id === 'O3' || id === 'N1') === !wf.MUST.has(id)), 'O3 and N1 are the only SHOULDs');
 });
 
 test('every stack fixture is compliant (lane declared)', () => {
@@ -241,4 +241,13 @@ test('CLI: one line per finding, exit 1 only on a FAIL, a missing directory is f
   const warn = run();
   assert.equal(warn.code, 0, 'a SHOULD does not fail the gate');
   assert.match(warn.out, /^standards: WARN \[ci-base\/wf\] \.github\/workflows\/after\.yml:4: .* \(O3\)$/m);
+});
+
+test('N1: literal setup-node node-version warns; node-version-file and expressions pass', () => {
+  const base = fx.STACKS.ts || Object.values(fx.STACKS).find((t) => t.includes('node-version-file: .nvmrc\n'));
+  const from = '          node-version-file: .nvmrc\n';
+  assert.ok(base.includes(from));
+  const w = lint(fx.swap(base, from, '          node-version: 22\n'), '.github/workflows/ci-ts.yml');
+  assert.deepEqual(w.map((f) => [f.id, f.level]), [['N1', 'WARN']]);
+  assert.deepEqual(lint(fx.swap(base, from, '          node-version: ${{ matrix.node }}\n'), '.github/workflows/ci-ts.yml'), []);
 });
