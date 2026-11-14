@@ -1,4 +1,4 @@
-// sdlc-docs 1.0.0: scaffold (copy-if-absent, kit-block refresh), front-matter parsing, rule edge cases, released files.
+// sdlc-docs 1.1.0: scaffold (copy-if-absent, kit-block refresh), front-matter parsing, rule edge cases, released files.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,7 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { KIT_ROOT, tmpdir, node } from './helpers.mjs';
 
-const DIR = process.env.SDLC_DOCS_SRC ? path.join(KIT_ROOT, 'src/profiles/sdlc-docs') : path.join(KIT_ROOT, 'profiles/sdlc-docs/1.0.0');
+const DIR = process.env.SDLC_DOCS_SRC ? path.join(KIT_ROOT, 'src/profiles/sdlc-docs') : path.join(KIT_ROOT, 'profiles/sdlc-docs/1.1.0');
 const STD = path.join(DIR, '.standards/sdlc-docs');
 const DOCS = path.join(STD, 'docs.mjs');
 const d = await import(pathToFileURL(DOCS).href);
