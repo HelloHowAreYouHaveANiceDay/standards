@@ -26,12 +26,14 @@ linear_project:           # optional
 ## Decided
 <!-- (required) D1.. one line each: decision + why. Chat-time decisions only; post-approval ones go to docs/decisions/. -->
 
-## How it works
-<!-- Start with "In short:". -->
+## How it works (guidance -- not binding)
+<!-- Start with "In short:". Guidance: workers may deviate with a reason logged in the PR body. Tuning numbers read "configurable, default X", never as requirements. -->
 
 ## Acceptance criteria
 <!-- (required) One per line: id + tag + EARS. Tag each [must] or [nice].
-     Workers may cut a [nice] AC with an ADR; changing or cutting a [must] AC is human-blocked.
+     [must] = security, isolation, taint, approvals, data-locality; [nice] = UX polish, convenience. Only Decided, ACs and Out are binding.
+     Tuning numbers are config defaults: write "configurable, default X", not a requirement.
+     Workers may cut a [nice] AC (ADR in docs/decisions/); changing or cutting a [must] AC is human-blocked.
      Every [must] AC is cited by >=1 issue (slicing worker) and closed (rechecked at the done flip). Unknowns as [NEEDS CLARIFICATION: ...]. -->
 - AC1 [must] WHEN <trigger> THE SYSTEM SHALL <response>.
 - AC2 [nice] WHEN <trigger> THE SYSTEM SHALL <response>.
@@ -44,7 +46,7 @@ linear_project:           # optional
 ## Metrics
 
 ## Risks / Out
-<!-- Name known rabbit holes (they become spike issues). Out items are hard no-gos for workers. -->
+<!-- Name known rabbit holes. Out items are hard no-gos for workers. -->
 
 ## Moving parts
 

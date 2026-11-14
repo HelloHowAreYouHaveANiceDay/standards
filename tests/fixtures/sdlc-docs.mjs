@@ -14,7 +14,7 @@ const AGENTS = '# fixture -- agent instructions\n\n<!-- kit:sdlc-docs begin -->\
 
 export const fixture = {
   id: 'sdlc-docs',
-  profiles: ['base@1.0.0', 'sdlc-docs@1.0.0'],
+  profiles: ['base@1.0.0', 'sdlc-docs@1.1.0'],
   files: {
     'README.md': '# fixture\n\nA fixture.\n',
     'AGENTS.md': AGENTS,

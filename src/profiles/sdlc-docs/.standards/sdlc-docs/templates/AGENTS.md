@@ -22,13 +22,13 @@ repo: <name>
 ## Rules
 - Tasks are Linear DIM issues. Each cites `Spec: docs/specs/NNNN-slug.md@vN (AC ids)`.
 - Read the issue body, then this file, then the cited spec's TL;DR, Decided, your ACs and Risks/Out.
-  Out items are hard no-gos.
-- HOW is yours: split/merge/reorder scopes, refactor, or cut a [nice] AC -> decide and write an ADR.
+  Binding: Decided, ACs, Out (Out items are hard no-gos). How it works is guidance: deviate with a reason logged in the PR body.
+- HOW is yours: split/merge/reorder scopes, refactor, deviate from How it works -> decide and log one line with the reason in the PR body.
 - WHAT is not: changing or cutting a [must] AC, a Decided item or an Out item -> mark the issue
   human-blocked; do not guess.
-- Discovered work -> a new issue citing the same spec (label `spike` while unclear).
+- Discovered work -> a new issue citing the same spec.
 - Never set a spec to approved, never change appetite, never edit an approved spec's body.
-- New decisions go in a new docs/decisions/ file; never copy a spec's Decided list.
+- A docs/decisions/ file only for a choice that outlives the PR or cuts a [nice] AC (never copy a spec's Decided list); routine choices are one line in the PR body.
 - New spec/ADR ids: next free number at PR time; rename on conflict.
 <!-- kit:sdlc-docs end -->
 

@@ -1,0 +1,14 @@
+{
+  "profile": "sdlc-docs",
+  "version": "1.1.0",
+  "commands": [
+    {
+      "id": "docs",
+      "tool": "docs",
+      "run": [
+        "node",
+        ".standards/sdlc-docs/docs.mjs"
+      ]
+    }
+  ]
+}
