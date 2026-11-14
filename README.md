@@ -44,6 +44,7 @@ Profiles (pick `base` plus at most one per language; each profile's rules: `.sta
 | `gha-base` | GitHub Actions workflows | actionlint + shellcheck + zizmor (sha256-pinned binaries) |
 | `ci-base` | GitHub Actions pipeline shape | zero-dep `wf.mjs` (C1 C2 G1 G2 G6 L1 D2 K1 S4 O3, spec--ci-standards); use with `gha-base` |
 | `repo-gate` | every factory repo (code-host gate, not lint) | CODEOWNERS block offline; `gate.mjs --repo` verifies the live ruleset (factory spec 9) |
+| `mcp-connector` | every repo that exposes a remote MCP connector | zero-dep `connector.mjs` (M1-M10: manifest shape, tool names, class/annotation agreement, no read/write catch-all, no model-instruction text, schemas, transaction safety, docs/privacy present, error codes, forbidden wording); optional `--live` contract test (L1-L4, not gated); directory GUIDELINES and templates via `--scaffold` |
 | `sdlc-docs` | every repo (docs of record, not lint) | zero-dep `docs.mjs` (R1-R5: README/AGENTS/CLAUDE shim, spec + ADR front matter, status, ids, approved specs); `--scaffold` copies absent templates |
 | `cost-table` | data only (dim-factory pricing source) | `table.mjs --check` validates model/sub/runner rows; unknown model lookup throws |
 | `ci-local` | every repo on builder-side CI (not lint) | zero-dep `ci.mjs`: run / sign / publish / verify / status (commit status `builder-ci`) over `ci/suites.json`; gate runs `check-manifest` |

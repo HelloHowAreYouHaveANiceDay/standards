@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "name": "{{CONNECTOR_NAME}}",
+  "title": "{{CONNECTOR_TITLE}}",
+  "endpoint": "https://{{DOMAIN}}/mcp",
+  "auth": "none",
+  "protocolVersions": ["2025-11-25", "2025-06-18", "2025-03-26"],
+  "directories": ["claude", "chatgpt", "muse"],
+  "links": {
+    "docs": "https://{{DOMAIN}}/connector/",
+    "privacy": "https://{{DOMAIN}}/privacy/",
+    "terms": "https://{{DOMAIN}}/terms/",
+    "support": "mailto:{{SUPPORT_EMAIL}}"
+  },
+  "data": {
+    "collected": ["{{WHAT_THE_USER_SENDS}}"],
+    "retention": "{{HOW_LONG_EACH_ITEM_IS_KEPT}}",
+    "training": false,
+    "sharedWith": ["{{THIRD_PARTIES_OR_NONE}}"]
+  },
+  "wording": { "forbidden": [] },
+  "testMode": null,
+  "tools": [
+    {
+      "name": "{{tool_name}}",
+      "title": "{{Tool title}}",
+      "description": "{{One or two factual sentences: what the tool returns or does, for which input.}}",
+      "class": "read",
+      "transaction": false,
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "query": { "type": "string", "description": "{{What the caller passes, with an example.}}" } },
+        "required": ["query"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": { "result": { "type": "string", "description": "{{What this field holds.}}" } },
+        "required": ["result"]
+      },
+      "errors": [
+        { "code": "invalid_input", "meaning": "{{When the input is missing or malformed.}}" },
+        { "code": "rate_limited", "meaning": "{{When the caller is over the rate limit.}}" }
+      ],
+      "rateLimit": "{{N calls per hour per client IP}}"
+    }
+  ]
+}

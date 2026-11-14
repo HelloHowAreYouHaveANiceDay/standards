@@ -1,0 +1,14 @@
+{
+  "profile": "mcp-connector",
+  "version": "0.0.0",
+  "commands": [
+    {
+      "id": "connector",
+      "tool": "connector",
+      "run": [
+        "node",
+        ".standards/mcp-connector/connector.mjs"
+      ]
+    }
+  ]
+}
