@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SUMS_RE = /^([0-9a-f]{64}) {2}(\S(?:.*\S)?)$/;
+const OFFICIAL_KIT = 'https://raw.githubusercontent.com/HelloHowAreYouHaveANiceDay/standards/main';
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const posix = (p) => p.split(path.sep).join('/');
 
@@ -202,6 +203,252 @@ function checkoutCache(root, id) {
   return dir;
 }
 
+const jsonLine = (text, needle) => {
+  const at = text.indexOf(JSON.stringify(needle));
+  return at < 0 ? 1 : text.slice(0, at).split('\n').length;
+};
+
+function jsonLeaves(value, prefix = []) {
+  if (Array.isArray(value)) return value.flatMap((v, i) => jsonLeaves(v, [...prefix, `[${i}]`]));
+  if (value && typeof value === 'object') return Object.entries(value).flatMap(([k, v]) => jsonLeaves(v, [...prefix, k]));
+  return [{ path: prefix, value }];
+}
+
+function yamlRecords(text) {
+  const records = [];
+  const stack = [];
+  for (const [i, raw] of text.split(/\r?\n/).entries()) {
+    const line = raw.replace(/\s+#.*$/, '');
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const indent = /^ */.exec(line)[0].length;
+    while (stack.length && stack.at(-1).indent >= indent) stack.pop();
+    const body = line.trim();
+    const isList = body.startsWith('- ' ) || body === '-';
+    const content = isList ? body.slice(1).trim() : body;
+    const match = /^([^:]+):(?:\s*(.*))?$/.exec(content);
+    const parent = stack.map((x) => x.key);
+    if (isList) parent.push('[]');
+    if (match) {
+      const key = match[1].trim().replace(/^['"]|['"]$/g, '');
+      const value = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
+      const record = { path: [...parent, key], value, line: i + 1 };
+      records.push(record);
+      if (!value) stack.push({ indent, key: isList ? '[]' : key });
+    } else {
+      const value = content.replace(/^['"]|['"]$/g, '');
+      records.push({ path: parent, value, line: i + 1 });
+    }
+  }
+  return records;
+}
+
+function truthyYaml(value) {
+  return !['', 'false', 'null', '~', '[]', '{}'].includes(value.toLowerCase());
+}
+
+function ratchetGolangci(baseText, headText, file = '.golangci.local.yml') {
+  const base = yamlRecords(baseText);
+  const head = yamlRecords(headText);
+  const key = (r) => r.path.join('.').toLowerCase();
+  const baseSet = new Set(base.map((r) => `${key(r)}=${r.value}`));
+  const failures = [];
+  const add = (r, msg) => failures.push(`${file}:${r.line}: ${msg}`);
+  for (const r of head) {
+    const p = key(r);
+    const added = !baseSet.has(`${p}=${r.value}`);
+    if (added && /(^|\.)(disable|disabled|disable-all)(\.|$)/.test(p) && truthyYaml(r.value)) {
+      add(r, `disabled linter or linter set: ${r.value || p}`);
+    } else if (added && /exclude|exclusion|skip-dirs|skip-files/.test(p) && truthyYaml(r.value)) {
+      add(r, `added exclusion entry ${p}: ${r.value || p}`);
+    }
+    if (!/(threshold|(^|\.)max(?:-|$))/.test(p) || !/^\d+(?:\.\d+)?$/.test(r.value)) continue;
+    const previous = base.find((b) => key(b) === p && /^\d+(?:\.\d+)?$/.test(b.value));
+    if (!previous) add(r, `added threshold ${r.path.at(-1)}=${r.value}`);
+    else if (Number(r.value) > Number(previous.value)) add(r, `raised ${r.path.at(-1)} from ${previous.value} to ${r.value}`);
+  }
+  return failures;
+}
+
+function ratchetManifest(baseText, headText) {
+  let before; let after;
+  try { before = JSON.parse(baseText); after = JSON.parse(headText); } catch { return []; }
+  const failures = [];
+  const beforeProfiles = before.profiles || {};
+  const afterProfiles = after.profiles || {};
+  for (const [name, version] of Object.entries(beforeProfiles)) {
+    const line = jsonLine(headText, name);
+    if (!Object.hasOwn(afterProfiles, name)) failures.push(`.standards.json:${line}: dropped profile ${name}`);
+    else {
+      const oldParts = String(version).split('.').map(Number);
+      const newParts = String(afterProfiles[name]).split('.').map(Number);
+      const older = newParts.some((n, i) => n < oldParts[i] && newParts.slice(0, i).every((v, j) => v === oldParts[j]));
+      if (older) failures.push(`.standards.json:${jsonLine(headText, afterProfiles[name])}: downgraded ${name} from ${version} to ${afterProfiles[name]}`);
+    }
+  }
+  const walkOptOuts = (value, beforeValue, pathParts = []) => {
+    if (!value || typeof value !== 'object') return;
+    for (const [name, child] of Object.entries(value)) {
+      const old = beforeValue && typeof beforeValue === 'object' ? beforeValue[name] : undefined;
+      const p = [...pathParts, name];
+      if (old === undefined && /opt.?out|skip|disable|exclude/i.test(name) && child !== false && child !== null) {
+        failures.push(`.standards.json:${jsonLine(headText, name)}: added opt-out ${p.join('.')}`);
+      }
+      walkOptOuts(child, old, p);
+    }
+  };
+  walkOptOuts(after, before);
+  return failures;
+}
+
+export function ratchetConfigs(baseFiles, headFiles) {
+  const failures = [];
+  const baseSuppressions = baseFiles['eslint-suppressions.json'];
+  const headSuppressions = headFiles['eslint-suppressions.json'];
+  if (headSuppressions) {
+    try {
+      const before = baseSuppressions ? JSON.parse(baseSuppressions) : {};
+      const after = JSON.parse(headSuppressions);
+      const oldLeaves = new Map(jsonLeaves(before).map((x) => [x.path.join('.'), x.value]));
+      const newLeaves = jsonLeaves(after);
+      for (const item of newLeaves) {
+        const p = item.path.join('.');
+        const prior = oldLeaves.get(p);
+        const lineKey = item.path.filter((part) => !/^\[\d+\]$/.test(part)).at(-1);
+        const line = jsonLine(headSuppressions, lineKey);
+        const loc = `eslint-suppressions.json:${line}`;
+        if (prior === undefined) failures.push(`${loc}: new suppression entry ${p}`);
+      }
+      const count = (items) => items.filter((item) => /(^|\.)count$/i.test(item.path.join('.')) && Number.isFinite(Number(item.value)))
+        .reduce((sum, item) => sum + Number(item.value), 0);
+      const oldCount = count(jsonLeaves(before));
+      const newCount = count(newLeaves);
+      if (newCount > oldCount) {
+        const item = newLeaves.find((x) => /(^|\.)count$/i.test(x.path.join('.')) && Number(x.value) > Number(oldLeaves.get(x.path.join('.'))));
+        const line = jsonLine(headSuppressions, item?.path.filter((part) => !/^\[\d+\]$/.test(part)).at(-1));
+        failures.push(`eslint-suppressions.json:${line}: total suppression count increased from ${oldCount} to ${newCount}`);
+      }
+    } catch { failures.push('eslint-suppressions.json:1: invalid JSON; cannot verify suppressions'); }
+  }
+  if (headFiles['.golangci.local.yml']) failures.push(...ratchetGolangci(baseFiles['.golangci.local.yml'] || '', headFiles['.golangci.local.yml']));
+  if (headFiles['.standards.json'] && baseFiles['.standards.json']) {
+    failures.push(...ratchetManifest(baseFiles['.standards.json'], headFiles['.standards.json']));
+    try {
+      const before = JSON.parse(baseFiles['.standards.json']);
+      const after = JSON.parse(headFiles['.standards.json']);
+      if ((before.kit || OFFICIAL_KIT) !== (after.kit || OFFICIAL_KIT)) {
+        failures.push(`.standards.json:${jsonLine(headFiles['.standards.json'], 'kit')}: changed kit source`);
+      }
+    } catch { /* manifest parser reports malformed JSON in the regular lock check */ }
+  }
+  return failures;
+}
+
+export async function publishedIntegrity(root, changed, manifest, kitBase = OFFICIAL_KIT) {
+  const relevant = changed.filter((f) => f.startsWith('.standards/') && f !== '.standards/generated.SHA256SUMS');
+  if (!relevant.length) return [];
+  const failures = [];
+  const kit = String(kitBase).replace(/\/+$/, '');
+  const get = async (rel) => {
+    if (/^https?:\/\//.test(kit)) {
+      const response = await fetch(`${kit}/${rel}`, { signal: AbortSignal.timeout(2500), headers: { 'cache-control': 'no-cache' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    }
+    const dir = kit.startsWith('file:') ? fileURLToPath(kit) : path.resolve(root, kit);
+    return fs.readFileSync(path.join(dir, ...rel.split('/')));
+  };
+  const expected = new Map();
+  const pinned = manifest.profiles || {};
+  const impacted = new Set();
+  for (const file of relevant) {
+    if (file === '.standards/check.mjs') impacted.add('base');
+    const lock = /^\.standards\/([^/]+)\.SHA256SUMS$/.exec(file);
+    const profileDir = /^\.standards\/([^/]+)\//.exec(file);
+    if (lock) impacted.add(lock[1]);
+    else if (profileDir && Object.hasOwn(pinned, profileDir[1])) impacted.add(profileDir[1]);
+  }
+  for (const name of impacted) {
+    const version = pinned[name];
+    if (!version) continue;
+    try {
+      const lock = await get(`profiles/${name}/${version}/SHA256SUMS`);
+      expected.set(`.standards/${name}.SHA256SUMS`, lock);
+      const parsed = parseSums(lock.toString('utf8'), name);
+      for (const [file, sum] of parsed.sums) expected.set(file, sum);
+    } catch (e) {
+      failures.push(`standards: FAIL [ratchet] .standards/${name}.SHA256SUMS: cannot read pinned kit content (${e.message})`);
+    }
+  }
+  for (const file of relevant) {
+    const want = expected.get(file);
+    if (!want) {
+      failures.push(`standards: FAIL [ratchet] ${file}: not published by the pinned profiles`);
+      continue;
+    }
+    if (Buffer.isBuffer(want)) {
+      const got = fs.existsSync(path.join(root, ...file.split('/'))) ? fs.readFileSync(path.join(root, ...file.split('/'))) : null;
+      if (!got || !got.equals(want)) failures.push(`standards: FAIL [ratchet] ${file}: differs from kit-published SHA256SUMS`);
+      continue;
+    }
+    const abs = path.join(root, ...file.split('/'));
+    const got = fs.existsSync(abs) ? sha256(fs.readFileSync(abs)) : null;
+    if (got !== want) failures.push(`standards: FAIL [ratchet] ${file}: differs from kit-published content (sha256 ${got || 'missing'} != ${want})`);
+  }
+  return failures;
+}
+
+export async function configRatchet(root) {
+  const remote = 'origin/main';
+  const hasRef = sh('git', ['rev-parse', '--verify', '--quiet', `refs/remotes/${remote}`], { cwd: root }).code === 0;
+  if (!hasRef && !process.env.GITHUB_ACTIONS) return [];
+  if (!hasRef) {
+    const err = ensureRef(root, remote);
+    if (err) return [`standards: FAIL [ratchet] origin/main: ${err}`];
+  }
+  const base = sh('git', ['merge-base', remote, 'HEAD'], { cwd: root });
+  if (base.code !== 0) return [`standards: FAIL [ratchet] origin/main: cannot find merge base (${base.out.trim()})`];
+  const names = sh('git', ['diff', '--name-only', '--no-renames', base.stdout.trim(), 'HEAD'], { cwd: root });
+  if (names.code !== 0) return [`standards: FAIL [ratchet] origin/main: cannot list changed files (${names.out.trim()})`];
+  const changed = names.stdout.split(/\r?\n/).filter(Boolean).map((f) => f.replace(/\\/g, '/'));
+  const loadAt = (revision, file) => {
+    const r = sh('git', ['show', `${revision}:${file}`], { cwd: root });
+    return r.code === 0 ? r.stdout : '';
+  };
+  const configs = ['eslint-suppressions.json', '.golangci.local.yml', '.standards.json'];
+  const baseFiles = {}; const headFiles = {};
+  for (const file of configs) {
+    if (!changed.includes(file)) continue;
+    baseFiles[file] = loadAt(base.stdout.trim(), file);
+    const abs = path.join(root, ...file.split('/'));
+    if (fs.existsSync(abs)) headFiles[file] = fs.readFileSync(abs, 'utf8');
+  }
+  const failures = ratchetConfigs(baseFiles, headFiles);
+  if (changed.includes('.golangci.yml')) {
+    const generated = fs.readFileSync(path.join(root, '.golangci.yml'), 'utf8');
+    const stamp = overlayStamp(generated);
+    if (stamp?.path) {
+      const overlayPath = path.join(root, ...stamp.path.split('/'));
+      const actual = fs.existsSync(overlayPath) ? sha256(fs.readFileSync(overlayPath)) : null;
+      if (actual !== stamp.sha) failures.push(`standards: FAIL [ratchet] .golangci.yml: generated output does not match overlay stamp for ${stamp.path}`);
+    } else failures.push('standards: FAIL [ratchet] .golangci.yml: generated output does not match overlay stamp');
+    const baseGenerated = loadAt(base.stdout.trim(), '.golangci.yml');
+    if (baseGenerated) failures.push(...ratchetGolangci(baseGenerated, generated, '.golangci.yml'));
+  }
+  if (changed.some((f) => f.startsWith('.standards/') || f === '.golangci.yml')) {
+    let manifest = {};
+    try { manifest = JSON.parse(fs.readFileSync(path.join(root, '.standards.json'), 'utf8')); }
+    catch { failures.push('standards: FAIL [ratchet] .standards.json:1: cannot verify pinned kit content (invalid manifest)'); }
+    failures.push(...await publishedIntegrity(root, changed, manifest));
+    if (changed.includes('.golangci.yml')) {
+      const generated = path.join(root, '.standards', 'generated.SHA256SUMS');
+      if (!fs.existsSync(generated)) failures.push('standards: FAIL [ratchet] .golangci.yml: missing generated lock; run sync.mjs');
+      const hasSyncInput = changed.includes('.golangci.local.yml') || changed.some((f) => /^\.standards\/[^/]+\//.test(f));
+      if (!hasSyncInput) failures.push('standards: FAIL [ratchet] .golangci.yml: changed without a pinned profile or overlay change; regenerate with sync.mjs');
+    }
+  }
+  return failures;
+}
+
 function runCommand(root, profile, cmd) {
   const tag = `${profile}/${cmd.tool || cmd.id}`;
   const failures = [];
@@ -250,13 +497,19 @@ function runCommand(root, profile, cmd) {
   return failures;
 }
 
-export function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const locksOnly = argv.includes('--locks-only');
   const { failures, profiles } = verifyLocks(root);
   if (failures.length) {
     for (const f of failures) console.log(f);
     console.log(`standards: ${failures.length} failure(s) in the locks -- tools not run`);
+    return 1;
+  }
+  const ratchetFailures = await configRatchet(root);
+  if (ratchetFailures.length) {
+    for (const f of ratchetFailures) console.log(f);
+    console.log(`standards: ${ratchetFailures.length} failure(s) in the config ratchet`);
     return 1;
   }
   console.log(`standards: locks OK (${profiles.map((p) => `${p.name}@${p.version}`).join(', ')})`);
@@ -275,4 +528,4 @@ export function main(argv = process.argv.slice(2)) {
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) process.exitCode = main();
+if (isMain) main().then((code) => { process.exitCode = code; }, (e) => { console.error(`standards: FAIL [ratchet] ${e.message}`); process.exitCode = 1; });
