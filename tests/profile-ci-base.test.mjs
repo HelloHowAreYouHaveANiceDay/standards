@@ -1,4 +1,4 @@
-// ci-base 1.1.0: the workflow lint (wf.mjs) rule by rule, the allow mechanism, the CLI, and the released files.
+// ci-base 2.0.0: the workflow lint (wf.mjs) rule by rule, the allow mechanism, the CLI, and the released files.
 // Compliant stack workflows and injected violations come from tests/fixtures/ci-base.mjs (the same text the kit's
 // fixture-sync syncs into a follower).
 import test from 'node:test';
@@ -10,7 +10,7 @@ import { KIT_ROOT, sha256, tmpdir, node } from './helpers.mjs';
 import * as fx from './fixtures/ci-base.mjs';
 
 // CI_BASE_SRC=1 runs against src/profiles (development); the default is the immutable released snapshot.
-const DIR = process.env.CI_BASE_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-base') : path.join(KIT_ROOT, 'profiles/ci-base/1.1.0');
+const DIR = process.env.CI_BASE_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-base') : path.join(KIT_ROOT, 'profiles/ci-base/2.0.0');
 const STD = path.join(DIR, '.standards/ci-base');
 const wf = await import(pathToFileURL(path.join(STD, 'wf.mjs')).href);
 const lint = (text, file = '.github/workflows/ci.yml', ctx = { names: new Set(['CI']), lane: true }) => wf.lintWorkflow(text, file, ctx);
@@ -32,7 +32,7 @@ test('released files: check.json is one wf command; the vendored parser matches 
   const rules = fs.readFileSync(path.join(STD, 'RULES.md'), 'utf8');
   for (const id of wf.RULE_IDS) assert.ok(new RegExp(`\\| ${id} \\| (MUST|SHOULD) \\|`).test(rules), `RULES.md row for ${id}`);
   for (const s of ['# standards-allow <ID>: <reason>', 'self-hosted-runner.labels', 'Guidance']) assert.ok(rules.includes(s), s);
-  assert.ok(wf.RULE_IDS.every((id) => (id === 'O3' || id === 'N1') === !wf.MUST.has(id)), 'O3 and N1 are the only SHOULDs');
+  assert.ok(wf.RULE_IDS.every((id) => ['O3', 'N1', 'P3'].includes(id) === !wf.MUST.has(id)), 'O3, N1 and P3 are the only SHOULDs');
 });
 
 test('every stack fixture is compliant (lane declared)', () => {
@@ -250,4 +250,89 @@ test('N1: literal setup-node node-version warns; node-version-file and expressio
   const w = lint(fx.swap(base, from, '          node-version: 22\n'), '.github/workflows/ci-ts.yml');
   assert.deepEqual(w.map((f) => [f.id, f.level]), [['N1', 'WARN']]);
   assert.deepEqual(lint(fx.swap(base, from, '          node-version: ${{ matrix.node }}\n'), '.github/workflows/ci-ts.yml'), []);
+});
+
+// ---- 2.0.0: Python runs through uv (P1 P2 P3) ----
+const wfOf = (steps, extra = '') => `name: n\non: push\n${extra}jobs:\n  a:\n    runs-on: [self-hosted, deploy]\n    timeout-minutes: 5\n    steps:\n${steps}`;
+// a JSON string is a valid YAML double-quoted scalar, so any command text (quotes, backslashes, newlines) round-trips
+const run = (cmd) => wfOf(`      - run: ${JSON.stringify(cmd)}\n`);
+const p1 = (t) => only(t, 'P1', 'x.yml', X);
+
+test('P1: setup-python, shell: python, installer fetch and bare python/pip in command position', () => {
+  assert.equal(p1(wfOf('      - uses: actions/setup-python@v6\n')).length, 1);
+  assert.equal(p1(wfOf('      - uses: actions/setup-python\n')).length, 1, 'any ref');
+  assert.equal(p1(wfOf('      - shell: python\n        run: print(1)\n')).length, 1);
+  assert.equal(p1(run('curl -LsSf https://astral.sh/uv/install.sh | sh')).length, 1);
+  assert.equal(p1(run('irm https://astral.sh/uv/install.ps1 | iex')).length, 1);
+  for (const c of ['python x.py', 'python3 x.py', 'python3.12 -m venv v', 'py -3 x.py', 'pip install x', 'pip3 install x', 'pipx run x', 'poetry install', 'virtualenv v',
+    'echo a && python x.py', 'echo a; pip install x', 'cat f | python -', 'x || python3 y', '(python3 y)', 'v=$(python3 -c 1)', 'if true; then python x; fi',
+    'FOO=1 python x.py', 'env FOO=1 python x.py', 'sudo pip install x', 'time python x.py', 'exec python x.py', 'for i in 1; do python x.py; done',
+    'echo a \\\n  && python x.py', 'echo hi\npython x.py']) {
+    assert.equal(p1(run(c)).length, 1, c);
+  }
+  assert.deepEqual(p1(wfOf('      - run: |\n          echo hi\n          python x.py\n')).map((f) => f.line), [8], 'the finding is on the step line');
+});
+
+test('P1 negatives: uv, paths, quoted text, heredoc bodies, comments, expressions', () => {
+  for (const c of ['uv run python x.py', 'uv run --no-project --python 3.12 python x.py', 'uv pip install x', 'uvx ruff check .', 'uv sync --locked',
+    '"$VENV/bin/python" -m pytest', '.venv/bin/python x.py', '.venv\\Scripts\\python x.py', './python x', 'echo "python x.py"', "echo 'pip install x'", 'echo python',
+    'git commit -m "use python3"', '# python x.py', 'echo ${{ matrix.python }} done', 'ls python-stuff', 'pythonic x', 'pipeline run', 'cat x | grep pip3.12']) {
+    assert.equal(p1(run(c)).length, 0, c);
+  }
+  assert.equal(p1(run("uv run --no-project python - <<'EOF'\npython = 1\npip install nope\nEOF\necho done")).length, 0, 'heredoc body');
+  assert.equal(p1(run('cat <<EOF > f\npython x\nEOF\n')).length, 0, 'unquoted heredoc tag');
+  assert.equal(p1(run('cat <<-EOF\npython x\nEOF\npython y')).length, 1, 'code after the heredoc is scanned');
+  assert.equal(p1(run('# python x.py\necho ok')).length, 0, 'comment line');
+});
+
+test('P1: allow with a reason suppresses it', () => {
+  assert.deepEqual(lint(wfOf('      - run: python3 --version # standards-allow P1: testing the host interpreter on purpose\n'), 'x.yml', X), []);
+});
+
+test('P2: setup-uv needs enable-cache: false and an exact uv version or version-file', () => {
+  const p2 = (w) => only(wfOf(`      - uses: astral-sh/setup-uv@abc # v10\n${w}`), 'P2', 'x.yml', X).length;
+  assert.equal(p2('        with:\n          enable-cache: false\n          version: "0.13.8"\n'), 0);
+  assert.equal(p2('        with:\n          enable-cache: false\n          version-file: pyproject.toml\n'), 0);
+  assert.equal(p2("        with:\n          enable-cache: 'false'\n          version: 0.13.8\n"), 0);
+  assert.equal(p2(''), 2);
+  assert.equal(p2('        with:\n          version: "0.13.8"\n'), 1, 'cache not disabled');
+  assert.equal(p2('        with:\n          enable-cache: true\n          version: "0.13.8"\n'), 1);
+  assert.equal(p2('        with:\n          enable-cache: false\n'), 1, 'no version');
+  assert.equal(p2('        with:\n          enable-cache: false\n          version: latest\n'), 1);
+  assert.equal(p2('        with:\n          enable-cache: false\n          version: "0.13"\n'), 1, 'not exact');
+  assert.equal(only(wfOf('      - uses: astral-sh/setup-uv\n'), 'P2', 'x.yml', X).length, 2, 'no ref still checked');
+});
+
+test('P3: uv sync / uv run need --locked or --frozen in a repo with uv.lock (WARN)', () => {
+  const U = { names: new Set(), lane: false, uvLock: true };
+  const p3 = (cmd, ctx = U, extra = '', stepEnv = '') => only(wfOf(`      - ${stepEnv}run: ${JSON.stringify(cmd)}\n`, extra), 'P3', 'x.yml', ctx);
+  assert.deepEqual(p3('uv sync').map((f) => [f.level, f.line]), [['WARN', 8]]);
+  assert.equal(p3('uv run pytest').length, 1);
+  assert.equal(p3('uv sync --locked').length, 0);
+  assert.equal(p3('uv run --frozen pytest').length, 0);
+  assert.equal(p3('uv run --no-project python x.py').length, 0);
+  assert.equal(p3('uv run --script x.py').length, 0);
+  assert.equal(p3('uv pip install x').length, 0);
+  assert.equal(p3('uvx ruff check .').length, 0);
+  assert.equal(p3('uv sync', { ...U, uvLock: false }).length, 0, 'no uv.lock, no rule');
+  assert.equal(p3('uv sync', X).length, 0);
+  assert.equal(p3('uv sync', U, 'env:\n  UV_LOCKED: "1"\n').length, 0, 'workflow env');
+  assert.equal(p3('uv sync', U, 'env:\n  UV_FROZEN: true\n').length, 0);
+  assert.equal(p3('uv sync', U, 'env:\n  UV_LOCKED: "0"\n').length, 1, 'falsy env does not count');
+  assert.equal(p3('uv sync', U, '', 'env:\n          UV_LOCKED: 1\n        ').length, 0, 'step env');
+  assert.equal(only(wfOf('      - run: uv sync\n').replace('timeout-minutes: 5', 'timeout-minutes: 5\n    env:\n      UV_LOCKED: 1'), 'P3', 'x.yml', U).length, 0, 'job env');
+});
+
+test('P3 reads the root uv.lock beside .github (lintDir)', () => {
+  const root = tmpdir('ci-uv-');
+  fs.mkdirSync(path.join(root, '.github/workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github/workflows/a.yml'), wfOf('      - run: uv sync\n'));
+  assert.deepEqual(wf.lintDir('.github/workflows', root).findings.filter((f) => f.id === 'P3'), []);
+  fs.writeFileSync(path.join(root, 'uv.lock'), 'version = 1\n');
+  assert.equal(wf.lintDir('.github/workflows', root).findings.filter((f) => f.id === 'P3').length, 1);
+});
+
+test('shellCommands: command-position tokens', () => {
+  assert.deepEqual(wf.shellCommands('A=1 B=2 python x && echo y | pip z').map((t) => t[0]), ['python', 'echo', 'pip']);
+  assert.deepEqual(wf.shellCommands("cat <<'E'\npython x\nE\nls").map((t) => t[0]), ['cat', 'ls']);
 });

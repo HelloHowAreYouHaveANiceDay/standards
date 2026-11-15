@@ -5,6 +5,21 @@ timeouts, the `ci-ok` aggregate, a PR-free main lane, cache and deploy-status ho
 (`wf.mjs`, with a vendored single-file YAML parser) enforces C1 C2 G1 G2 G6 L1 D2 K1 S4 (FAIL) and O3 (WARN). Ships no
 tool fetcher: use it together with `gha-base@1.0.0` for actionlint, shellcheck and zizmor. Pairs with base.
 
+## 2.0.0
+
+Major: P1 and P2 are MUST, so unchanged workflows can newly fail. Followers move only by an explicit `sync.mjs bump`.
+
+- P1 (MUST): Python runs through uv. No `actions/setup-python`, no `shell: python`, no command-position `python`,
+  `python3`, `python3.N`, `py`, `pip`, `pip3`, `pipx`, `poetry`, `virtualenv` in `run:`, no fetch of
+  `astral.sh/uv/install`. Paths (`"$VENV/bin/python"`), anything after `uv run` / `uv pip` / `uvx`, heredoc bodies
+  and quoted strings are not flagged.
+- P2 (MUST): every `astral-sh/setup-uv` step sets `enable-cache: false` and pins uv (`version:` exact X.Y.Z or `version-file:`).
+- P3 (SHOULD, WARN): in a repo with a root `uv.lock`, `uv sync` / `uv run` passes `--locked` or `--frozen` (or
+  `UV_LOCKED` / `UV_FROZEN` is set).
+- RULES.md: P1-P3 rows, Python/uv layout row, runner-host guidance (spec--python-uv D-uv5). Python/uv fixture updated
+  (setup-uv hash-pinned at v10.3.3, uv 0.13.8).
+- No change to the vendored parser (same sha256 as 1.0.0) or to C1-S4, N1, O3.
+
 ## 1.1.0
 
 - New SHOULD rule N1 (WARN, so unchanged code cannot newly fail): `actions/setup-node` must use `node-version-file`, not a

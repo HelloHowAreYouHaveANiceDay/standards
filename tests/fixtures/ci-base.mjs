@@ -161,25 +161,29 @@ ${checkout}      - run: npm ci && npm run build
         run: curl -fsS https://app.example.com/version.json | grep -qF "$SHA"
 ${ciOk(['changes', 'unit', 'emulators', 'e2e'])}`;
 
-export const PYTHON_UV = `${header()}jobs:
+const SETUP_UV = 'astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3';
+const uvStep = (extra = '          version-file: pyproject.toml\n') => `      - uses: ${SETUP_UV}\n        with:\n          enable-cache: false\n${extra}`;
+export const PYTHON_UV = `${header()}env:
+  UV_PYTHON_PREFERENCE: only-managed
+jobs:
   lint:
     runs-on: ${MAIN}
     timeout-minutes: 10
     steps:
-${checkout}      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: false
-      - run: uv sync --locked
+${checkout}${uvStep()}      - run: uv sync --locked
       - run: uv run ruff check .
   test:
     runs-on: ${MAIN}
     timeout-minutes: 20
     steps:
-${checkout}      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: false
-      - run: uv sync --locked
+${checkout}${uvStep()}      - run: uv sync --locked
       - run: uv run pytest -n 4
+      - run: |
+          uv run --no-project --python 3.12 python - <<'EOF'
+          python = "heredoc body, not a command"
+          EOF
+      - run: uv pip install --system x || true
+      - run: '"$VENV/bin/python" -m pytest'
 ${ciOk(['lint', 'test'])}`;
 
 // .NET + Revit: build (Windows) -> revit-live (Revit runner, PR only) -> ci-ok
@@ -263,11 +267,18 @@ export const INJECTIONS = [
   { id: 'K1', what: 'actions/cache of the Go build cache', text: swap(GO, '      - run: go vet ./...\n', '      - uses: actions/cache@v5\n        with:\n          path: ~/.cache/go-build\n          key: go\n      - run: go vet ./...\n'), needle: 'uses: actions/cache@v5' },
   { id: 'S4', what: 'an ubuntu-latest fallback', text: swap(TS_WORKERS, `'["self-hosted","Linux","X64"]'`, `'"ubuntu-latest"'`), needle: 'runs-on:' },
   { id: 'S4', what: 'an ubuntu-latest literal', text: swap(RUST, '  check:\n    runs-on: ' + MAIN + '\n', '  check:\n    runs-on: ubuntu-latest\n'), needle: 'runs-on: ubuntu-latest' },
+  { id: 'P1', what: 'an actions/setup-python step', text: swap(PYTHON_UV, uvStep(), "      - uses: actions/setup-python@v6\n        with:\n          python-version: '3.12'\n"), needle: 'uses: actions/setup-python@v6' },
+  { id: 'P1', what: 'a bare python3 command', text: swap(PYTHON_UV, '      - run: uv run ruff check .\n', '      - run: python3 x.py\n'), needle: 'run: python3 x.py' },
+  { id: 'P1', what: 'a pip install', text: swap(PYTHON_UV, '      - run: uv run ruff check .\n', '      - run: pip install x\n'), needle: 'run: pip install x' },
+  { id: 'P1', what: 'a python after && in a run step', text: swap(PYTHON_UV, '      - run: uv run ruff check .\n', '      - run: |\n          echo start && python x.py\n'), needle: '      - run: |\n          echo start' , firstOf: '      - run: |\n          echo start' },
+  { id: 'P1', what: 'a fetch of the uv installer', text: swap(PYTHON_UV, '      - run: uv run ruff check .\n', '      - run: curl -LsSf https://astral.sh/uv/install.sh | sh\n'), needle: 'astral.sh/uv/install.sh' },
+  { id: 'P2', what: 'a setup-uv step without a uv version', text: swap(PYTHON_UV, uvStep(), uvStep('')), needle: 'uses: ' + SETUP_UV },
+  { id: 'P2', what: 'a setup-uv step with enable-cache: true', text: swap(PYTHON_UV, 'enable-cache: false', 'enable-cache: true'), needle: 'uses: ' + SETUP_UV },
 ];
 
 export const fixture = {
   id: 'ci-base',
-  profiles: ['base@1.0.0', 'ci-base@1.0.0'],
+  profiles: ['base@1.0.0', 'ci-base@2.0.0'],
   files: files(),
   inject(dir, h) {
     const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };

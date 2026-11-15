@@ -19,6 +19,11 @@
       "run": ["node", ".standards/python-base/tool.mjs", "config"]
     },
     {
+      "id": "uv",
+      "tool": "uv",
+      "run": ["node", ".standards/python-base/tool.mjs", "uv"]
+    },
+    {
       "id": "ruff-check",
       "tool": "ruff 0.17.4 check",
       "run": ["node", ".standards/python-base/tool.mjs", "ruff", "check", "--no-fix", "--no-cache", "--output-format", "concise", "."]

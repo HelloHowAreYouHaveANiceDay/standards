@@ -35,14 +35,14 @@ Profiles (pick `base` plus at most one per language; each profile's rules: `.sta
 | `vue-ts` | Vue 3 + Vite + TS | pins, `vue-tsc --build`, type-aware ESLint + eslint-plugin-vue, Prettier |
 | `next-ts` | Next.js + TS | pins, `next typegen`, `tsc`, ESLint + eslint-config-next, Prettier |
 | `astro-ts` | Astro + TS | pins, `astro check`, ESLint + eslint-plugin-astro, Prettier (+ astro plugin) |
-| `python-base` | Python | Ruff check + Ruff format (sha256-pinned binary, no Python needed) |
+| `python-base` | Python (uv projects) | uv rules U1-U4 (uv.lock, no other lock or requirements format, `.python-version`, pinned `required-version`) + Ruff check + Ruff format (sha256-pinned binary, the gate needs no Python) |
 | `rust-base` | Rust | `cargo fmt --check`, clippy `-D warnings` (pinned toolchain) |
 | `dotnet-base` / `dotnet-addin` | C# / .NET (addin: net48 Revit/Rhino relaxations, used with base) | `dotnet format whitespace`, build with SDK analyzers as errors |
 | `c-base` | own C/C++ | clang-format (sha256-pinned wheel), vendored code via `.clang-format-ignore` |
 | `ruby-base` | Ruby (SketchUp extensions) | RuboCop + rubocop-sketchup, reasoned disables |
 | `pwsh-base` | PowerShell | PSScriptAnalyzer (pinned), reasoned suppressions |
 | `gha-base` | GitHub Actions workflows | actionlint + shellcheck + zizmor (sha256-pinned binaries) |
-| `ci-base` | GitHub Actions pipeline shape | zero-dep `wf.mjs` (C1 C2 G1 G2 G6 L1 D2 K1 S4 O3, spec--ci-standards); use with `gha-base` |
+| `ci-base` | GitHub Actions pipeline shape | zero-dep `wf.mjs` (C1 C2 G1 G2 G6 L1 D2 K1 S4 P1 P2 O3 N1 P3, spec--ci-standards + spec--python-uv: Python runs through uv); use with `gha-base` |
 | `repo-gate` | every factory repo (code-host gate, not lint) | CODEOWNERS block offline; `gate.mjs --repo` verifies the live ruleset (factory spec 9) |
 | `mcp-connector` | every repo that exposes a remote MCP connector | zero-dep `connector.mjs` (M1-M10: manifest shape, tool names, class/annotation agreement, no read/write catch-all, no model-instruction text, schemas, transaction safety, docs/privacy present, error codes, forbidden wording); optional `--live` contract test (L1-L4, not gated); directory GUIDELINES and templates via `--scaffold` |
 | `sdlc-docs` | every repo (docs of record, not lint) | zero-dep `docs.mjs` (R1-R5: README/AGENTS/CLAUDE shim, spec + ADR front matter, status, ids, approved specs); `--scaffold` copies absent templates |

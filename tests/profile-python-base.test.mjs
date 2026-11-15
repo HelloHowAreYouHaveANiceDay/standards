@@ -1,4 +1,4 @@
-// python-base 1.0.0: key properties of the released files (pins exact, gate commands, no autofix in CI, archive readers).
+// python-base 2.0.0: key properties of the released files (pins exact, gate commands, no autofix in CI, archive readers).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,10 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { KIT_ROOT, tmpdir, git } from './helpers.mjs';
 
-const DIR = path.join(KIT_ROOT, 'profiles', 'python-base', '1.0.0');
+const DIR = path.join(KIT_ROOT, 'profiles', 'python-base', '2.0.0');
 const SD = path.join(DIR, '.standards', 'python-base');
 const cj = JSON.parse(fs.readFileSync(path.join(SD, 'check.json'), 'utf8'));
 const tool = await import(pathToFileURL(path.join(SD, 'tool.mjs')).href);
@@ -26,8 +27,8 @@ test('ruff is pinned exactly; every platform archive has a sha256 and a versione
   }
 });
 
-test('gate: config, ruff check --no-fix, ruff format --check; nothing autofixes; no shell, no npx/uvx/pip', () => {
-  assert.deepEqual(cj.commands.map((c) => c.id), ['config', 'ruff-check', 'ruff-format']);
+test('gate: config, uv, ruff check --no-fix, ruff format --check; nothing autofixes; no shell, no npx/uvx/pip', () => {
+  assert.deepEqual(cj.commands.map((c) => c.id), ['config', 'uv', 'ruff-check', 'ruff-format']);
   for (const c of cj.commands) {
     assert.equal(c.run[0], 'node');
     assert.equal(c.run[1], '.standards/python-base/tool.mjs');
@@ -36,7 +37,7 @@ test('gate: config, ruff check --no-fix, ruff format --check; nothing autofixes;
   const byId = Object.fromEntries(cj.commands.map((c) => [c.id, c.run]));
   assert.ok(byId['ruff-check'].includes('--no-fix') && byId['ruff-check'].includes('check'));
   assert.ok(byId['ruff-format'].includes('--check') && byId['ruff-format'].includes('format'));
-  assert.ok(cj.commands.every((c) => c.tool === 'config' || c.tool.includes(cj.tools.ruff)), 'tool labels carry the pin');
+  assert.ok(cj.commands.every((c) => c.tool === 'config' || c.tool === 'uv' || c.tool.includes(cj.tools.ruff)), 'tool labels carry the pin');
 });
 
 test('ruff.toml: Ruff defaults plus B I UP, blanket + unused noqa; no per-file-ignores (globs would resolve inside .standards/)', () => {
@@ -128,4 +129,86 @@ test('host triple mapping covers the pinned platforms', () => {
   assert.equal(tool.hostTriple('darwin', 'arm64'), 'aarch64-apple-darwin');
   assert.equal(tool.hostTriple('freebsd', 'x64'), null);
   assert.ok(os.platform());
+});
+
+// ---- 2.0.0: uv project rules U1-U4 ----
+const uvRepo = (files) => {
+  const d = tmpdir('pb-uv-');
+  for (const [f, b] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), b); }
+  return d;
+};
+const PROJ = '[project]\nname = "x"\nversion = "0"\n\n[tool.uv]\nrequired-version = "==0.13.8"\n';
+const GOOD = { 'pyproject.toml': PROJ, 'uv.lock': 'version = 1\n', '.python-version': '3.12\n' };
+const uvp = (files) => tool.uvProblems(uvRepo(files));
+
+test('uv step: check.json runs `tool.mjs uv` right after config', () => {
+  const ids = cj.commands.map((c) => c.id);
+  assert.equal(ids.indexOf('uv'), ids.indexOf('config') + 1);
+  assert.deepEqual(cj.commands.find((c) => c.id === 'uv').run, ['node', '.standards/python-base/tool.mjs', 'uv']);
+});
+
+test('U1-U4: a clean uv project has no problems', () => {
+  assert.deepEqual(uvp(GOOD), []);
+  assert.deepEqual(uvp({ ...GOOD, '.python-version': '3.12.4\n' }), []);
+  assert.deepEqual(uvp({ ...GOOD, 'pyproject.toml': '[dependency-groups]\ndev = ["pytest"]\n[tool.uv]\nrequired-version = "==0.13.8"\n' }), []);
+  assert.deepEqual(uvp({ 'pyproject.toml': '[tool.ruff]\nline-length = 100\n', '.python-version': '3.12\n' }), [], 'a pyproject without [project] is not a uv project (no U1, no U4)');
+});
+
+test('U1: uv.lock beside the project, or in a uv-workspace root above it', () => {
+  const { 'uv.lock': _l, ...noLock } = GOOD;
+  assert.match(uvp(noLock)[0], /^pyproject\.toml: U1 /);
+  const ws = { 'pyproject.toml': '[project]\nname = "r"\n[tool.uv]\nrequired-version = "==0.13.8"\n[tool.uv.workspace]\nmembers = ["pkgs/*"]\n', 'uv.lock': 'v\n', '.python-version': '3.12\n', 'pkgs/a/pyproject.toml': '[project]\nname = "a"\n' };
+  assert.deepEqual(uvp(ws), []);
+  const notWs = { ...ws, 'pyproject.toml': PROJ };
+  assert.match(uvp(notWs).join('\n'), /pkgs\/a\/pyproject\.toml: U1 /);
+  assert.deepEqual(uvp({ ...ws, 'pkgs/a/uv.lock': 'v\n', 'pyproject.toml': PROJ }), []);
+});
+
+test('U2: no other lock or requirements format; uv export and reasoned allow are fine', () => {
+  for (const f of ['poetry.lock', 'Pipfile', 'Pipfile.lock', 'setup.py', 'setup.cfg', 'environment.yml', 'requirements.txt', 'requirements-dev.txt', 'sub/requirements.txt']) {
+    const p = uvp({ ...GOOD, [f]: 'x\n' });
+    assert.equal(p.length, 1, f);
+    assert.match(p[0], new RegExp(`^${f.replace(/[.]/g, '\\.')}: U2 `), f);
+  }
+  assert.deepEqual(uvp({ ...GOOD, 'requirements.txt': '# This file was autogenerated by uv via the following command:\n#    uv export\nx==1\n' }), []);
+  assert.deepEqual(uvp({ ...GOOD, 'setup.py': '# standards-allow U2: legacy shim\nfrom x import y\n' }), []);
+  assert.equal(uvp({ ...GOOD, 'setup.py': '# standards-allow U2\n' }).length, 1, 'no reason');
+  assert.equal(uvp({ ...GOOD, 'setup.py': 'x = 1\n# standards-allow U2: not first line\n' }).length, 1, 'allow must be the first line');
+  assert.equal(uvp({ ...GOOD, 'setup.py': '# This file was autogenerated by uv\n' }).length, 1, 'only requirements files may claim uv export');
+  assert.deepEqual(uvp({ ...GOOD, '.venv/requirements.txt': 'x\n', 'node_modules/p/setup.py': 'x\n', '.standards/y/requirements.txt': 'x\n' }), [], 'skipped directories');
+});
+
+test('U3: root .python-version is 3.N or 3.N.M', () => {
+  const { '.python-version': _v, ...none } = GOOD;
+  assert.match(uvp(none)[0], /^\.python-version: U3 missing/);
+  for (const bad of ['3\n', '3.12.4.1\n', 'cpython-3.12\n', '3.x\n', '', '2.7\n']) assert.match(uvp({ ...GOOD, '.python-version': bad })[0], /^\.python-version: U3 must hold/, JSON.stringify(bad));
+  assert.deepEqual(uvp({ ...GOOD, '.python-version': '  3.13  \r\n' }), []);
+});
+
+test('U4: root required-version "==X.Y.Z" in pyproject [tool.uv] or uv.toml, only when a uv project exists', () => {
+  const noReq = { ...GOOD, 'pyproject.toml': '[project]\nname = "x"\nversion = "0"\n' };
+  assert.match(uvp(noReq)[0], /^pyproject\.toml: U4 no /);
+  assert.deepEqual(uvp({ ...noReq, 'uv.toml': 'required-version = "==0.13.8"\n' }), []);
+  assert.match(uvp({ ...noReq, 'uv.toml': 'required-version = ">=0.13"\n' })[0], /U4 required-version ">=0\.13" is not an exact/);
+  assert.match(uvp({ ...GOOD, 'pyproject.toml': PROJ.replace('==0.13.8', '>=0.13.8') })[0], /U4 .*not an exact/);
+  assert.match(uvp({ ...GOOD, 'pyproject.toml': PROJ.replace('==0.13.8', '==0.13') })[0], /U4 .*not an exact/);
+  assert.equal(uvp({ ...GOOD, 'pyproject.toml': '[project]\nname = "x"\n[tool.other]\nrequired-version = "==0.13.8"\n' }).length, 1, 'only [tool.uv] counts');
+  assert.deepEqual(uvp({ '.python-version': '3.12\n' }), [], 'no uv project: no U4');
+});
+
+test('uv step CLI: exit 0 clean, 1 with one FAIL line per problem', () => {
+  // tool.mjs resolves ROOT from its own location, so run a copy placed under <repo>/.standards/python-base
+  const mk = (files) => {
+    const d = uvRepo(files);
+    fs.mkdirSync(path.join(d, '.standards/python-base'), { recursive: true });
+    fs.copyFileSync(path.join(SD, 'tool.mjs'), path.join(d, '.standards/python-base/tool.mjs'));
+    return d;
+  };
+  const exe = (d) => spawnSync(process.execPath, [path.join(d, '.standards/python-base/tool.mjs'), 'uv'], { cwd: d, encoding: 'utf8' });
+  const good = exe(mk(GOOD));
+  assert.equal(good.status, 0, good.stdout);
+  assert.match(good.stdout, /standards: \[python-base\/uv\] uv project files ok/);
+  const bad = exe(mk({ 'pyproject.toml': '[project]\nname = "x"\n', 'requirements.txt': 'x\n' }));
+  assert.equal(bad.status, 1);
+  assert.deepEqual(bad.stdout.trim().split('\n').map((l) => /^standards: FAIL \[python-base\/uv\] (\S+): (U\d) /.exec(l).slice(1)).sort(), [['.python-version', 'U3'], ['pyproject.toml', 'U1'], ['pyproject.toml', 'U4'], ['requirements.txt', 'U2']].sort());
 });

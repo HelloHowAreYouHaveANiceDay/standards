@@ -1,0 +1,4 @@
+51f65dae28a91e448c34b352fe66b6d3b0393f05c004d2ddb3f7ee70736fe79b  .standards/ci-base/RULES.md
+8f7023423d847bb2b696dbf3bbf23023f7587987ab798fc4dc1d33782903e77c  .standards/ci-base/check.json
+ea2d389c933f2678ca79b14c009ced1e5c7a873d62987a2db0fde6a2396e6c1c  .standards/ci-base/vendor/yaml.mjs
+4878f8fc91bd7095f0788c742b332f10f47bb8a943b0ba782eb56552419093ec  .standards/ci-base/wf.mjs
