@@ -1,7 +1,7 @@
 {
   "schema": "ci-local/1",
   "os_required": "any",
-  "toolchain": { "node": "26", "go": "1.26" },
+  "toolchain": { "node": "22", "go": "1.23" },
   "suites": [
     { "id": "append-only", "required": true, "os": "any", "timeout_min": 5, "run": ["node scripts/append-only.mjs origin/main"] },
     { "id": "kit-sums", "required": true, "os": "any", "timeout_min": 10, "run": ["node --test tests/kit.test.mjs"] },

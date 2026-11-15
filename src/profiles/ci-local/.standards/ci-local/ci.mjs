@@ -23,7 +23,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.1.1';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -55,10 +55,21 @@ function gitOk(cwd, args, what, opts) {
 }
 const gitTry = (cwd, args) => { const r = git(cwd, args); return r.code === 0 ? r.out.trim() : null; };
 
-// Version rule (one function, run and verify): equal to the pin or extending it at a dot boundary.
+// Version rule (one function, run and verify). A pin is a MINIMUM by default: the host version must be >= the pin,
+// compared as dotted numbers with missing parts = 0 (rustc 1.100 >= pin 1.99). `{version, exact: true}` opts that one
+// pin into the old exact rule: equal to the pin or extending it at a dot boundary. A pin that is not dotted
+// numbers (e.g. "stable") can only be matched exactly. `pin` is the string or the {version, probe?, exact?} object.
+const NUMERIC_VERSION = /^\d+(?:\.\d+)*$/;
 export function versionMatches(pin, actual) {
-  const p = String(pin).replace(/^v/, ''); const a = String(actual ?? '').replace(/^v/, '');
-  return a === p || a.startsWith(`${p}.`);
+  const exact = !!(pin && typeof pin === 'object' && pin.exact === true);
+  const p = String(pin && typeof pin === 'object' ? pin.version : pin).replace(/^v/, ''); const a = String(actual ?? '').replace(/^v/, '');
+  if (exact || !NUMERIC_VERSION.test(p) || !NUMERIC_VERSION.test(a)) return a === p || a.startsWith(`${p}.`);
+  const pa = p.split('.').map(Number); const aa = a.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, aa.length); i++) {
+    const d = (aa[i] ?? 0) - (pa[i] ?? 0);
+    if (d !== 0) return d > 0;
+  }
+  return true;
 }
 
 export function globToRegExp(g) {
@@ -89,7 +100,8 @@ export function validateManifest(m) {
     for (const [k, v] of Object.entries(obj)) {
       const custom = v && typeof v === 'object';
       if (!custom && typeof v !== 'string') e.push(`${where}.${k}: a version string or {version, probe}`);
-      else if (custom && (typeof v.version !== 'string' || typeof v.probe !== 'string')) e.push(`${where}.${k}: custom entries need version and probe strings`);
+      else if (custom && (typeof v.version !== 'string' || (v.probe === undefined ? !BUILTIN_PROBES[k] : typeof v.probe !== 'string'))) e.push(`${where}.${k}: object entries need a version string and, without a built-in probe, a probe string`);
+      else if (custom && v.exact !== undefined && typeof v.exact !== 'boolean') e.push(`${where}.${k}: exact must be true or false`);
       else if (!custom && !BUILTIN_PROBES[k]) e.push(`${where}.${k}: no built-in probe; use {version, probe}`);
     }
   };
@@ -173,7 +185,7 @@ function suiteSelected(suite, files) {
 // ---------- toolchain ----------
 function probeVersion(name, pin) {
   const custom = pin && typeof pin === 'object';
-  const spec = custom ? pin.probe.split(/\s+/) : BUILTIN_PROBES[name];
+  const spec = custom && pin.probe ? pin.probe.split(/\s+/) : BUILTIN_PROBES[name];
   const r = run(spec[0], spec.slice(1), { shell: process.platform === 'win32', timeout: 60000 });
   const text = `${r.out}\n${r.err}`;
   const m = text.match(/(\d+(?:\.\d+)+)/) ?? text.match(/\b(\d+)\b/);
@@ -190,7 +202,7 @@ function toolchainOf(manifest, osClass) {
     const v = probeVersion(name, pin);
     probes[name] = v;
     if (v === null) drift.push(`${name}: not found (pin ${pinVersion(pin)})`);
-    else if (!versionMatches(pinVersion(pin), v)) drift.push(`${name}: have ${v}, pin ${pinVersion(pin)}`);
+    else if (!versionMatches(pin, v)) drift.push(`${name}: have ${v}, ${pin?.exact === true ? 'exact pin' : 'pin (minimum)'} ${pinVersion(pin)}`);
   }
   return { toolchain: { os: osClass, arch: os.arch(), probes }, drift };
 }
@@ -218,7 +230,7 @@ const repoRoot = (o) => path.resolve(o.root ?? process.cwd());
 // ---------- run ----------
 function readValidManifest(cwd) {
   const manifest = readManifestAt(cwd, null);
-  if (!manifest) throw new CiError('manifest-missing', `${MANIFEST_PATH} not found`, 1);
+  if (!manifest) throw new CiError('no-manifest', `${MANIFEST_PATH} not found`, 1);
   const bad = validateManifest(manifest);
   if (bad.length) throw new CiError('manifest-invalid', `${MANIFEST_PATH}: ${bad.join('; ')}`, 1);
   return manifest;
@@ -425,7 +437,8 @@ export function verifyCore(o, cwd) {
 
   let head;
   try { head = readManifestAt(cwd, sha); } catch (e) { fail(e.code, e.message); return done(); }
-  if (!head) { fail('manifest-missing', `${MANIFEST_PATH} not at ${sha.slice(0, 12)}`); return done(); }
+  // a tree that never adopted builder-CI is not red: pending, with the reason spelled out
+  if (!head) { waiting.push(`no-manifest: ${MANIFEST_PATH} not at ${sha.slice(0, 12)}`); return done(); }
   const mErr = validateManifest(head);
   if (mErr.length) { fail('manifest-invalid', mErr[0]); return done(); }
 
@@ -461,7 +474,7 @@ export function verifyCore(o, cwd) {
     if (rec.tree !== tree) { note('wrong-tree', `${name}: record.tree ${String(rec.tree).slice(0, 12)} != head tree ${tree.slice(0, 12)}`); continue; }
     if (rec.os !== osName || rec.toolchain?.os !== osName) { note('wrong-os', `${name}: record claims ${rec.os}/${rec.toolchain?.os}`); continue; }
     if (rec.ci_local_version !== VERSION) { note('ci-version-mismatch', `${name}: record ${rec.ci_local_version}, vendored ${VERSION}`); continue; }
-    const tcBad = Object.entries(effectiveToolchain(head, osName)).filter(([k, pin]) => !versionMatches(pinVersion(pin), rec.toolchain?.probes?.[k]));
+    const tcBad = Object.entries(effectiveToolchain(head, osName)).filter(([k, pin]) => !versionMatches(pin, rec.toolchain?.probes?.[k]));
     if (tcBad.length) { note('toolchain-mismatch', `${name}: ${tcBad.map(([k, p]) => `${k} have ${rec.toolchain?.probes?.[k] ?? 'none'} pin ${pinVersion(p)}`).join('; ')}`); continue; }
     if (rec.key !== recordKey(rec.tree, rec.toolchain)) { note('bad-key', `${name}: key does not match tree+toolchain+version`); continue; }
     verified.push(rec);

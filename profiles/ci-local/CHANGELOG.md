@@ -5,6 +5,23 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.1.1
+
+Pins are minimums; a tree with no manifest is pending (spec `_design-ci/spec-builder-side-ci.v5.md`, slice A4; owner
+2026-11-14). Same manifest schema, additive. `VERSION` is 1.1.1, so a tree that re-syncs re-runs once
+(`ci-version-mismatch`).
+
+- Toolchain pins are MINIMUMS: the host version must be >= the pin, compared as dotted numbers (missing parts 0), in
+  `run`, `--preflight` and `verify`. rustc 1.100 against pin 1.99 is capable (it was `host-not-capable`). The record
+  keeps the ACTUAL probed version. A pin that is not dotted numbers ("stable") still matches exactly.
+- A pin may be `{"version": "1.99", "exact": true}` (probe optional for built-in tools) to keep the old rule: equal
+  to the pin or extending it at a dot boundary. Use it only when the suite really needs that version. The lint
+  accepts `exact` (boolean only).
+- No manifest: `run` fails with `error.code` `no-manifest` (was `manifest-missing`); `verify` of a commit without
+  `ci/suites.json` is PENDING (exit 2, "no-manifest: ci/suites.json not at <sha>", status `pending`), not a red
+  `manifest-missing`. A tree with no vendored ci.mjs at all cannot run this code; the harness must map that case.
+- standards' own manifest: node 22 / go 1.23 as minimums (hosted CI used those; the host has 26 / 1.26).
+
 ## 1.1.0
 
 Any-host records (spec `_design-ci/spec-builder-side-ci.v4.md` section 5, slice A1; owner 2026-11-14: one passing
