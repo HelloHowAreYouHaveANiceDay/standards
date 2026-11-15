@@ -1,19 +1,21 @@
 #!/usr/bin/env node
-// ci-local: builder-side CI (spec: _design-ci/spec-builder-side-ci.v3.md). Zero dependencies, node >= 20.
+// ci-local: builder-side CI (spec: _design-ci/spec-builder-side-ci.v4.md, section 5 any-host records). Zero dependencies, node >= 20.
 //
 //   node .standards/ci-local/ci.mjs <verb> [options] [--json]
 //
-//   run             run ci/suites.json for THIS host's OS on a clean detached checkout, write record.<os>.json
+//   run             run ci/suites.json for THIS host's OS on a clean detached checkout, write record.<os>.<host-id>.json
+//                   (--preflight: only probe the toolchain pins; a host that cannot run writes no record)
 //   sign RECORD     ssh-keygen -Y sign (namespace ci-result@hhay) -> RECORD.sig
-//   publish RECORD  put RECORD + .sig on refs/ci/<tree> (keeps the other OS records) and push it
-//   verify          the mechanical check: signatures, tree, toolchain, suites, required OSes
+//   publish RECORD  put RECORD + .sig on refs/ci/<tree> (keeps the other hosts' records) and push it
+//   verify          the mechanical check: signatures, tree, toolchain, suites, os_required ("any" or an all-of list)
 //   status          verify, then POST commit status `builder-ci` (the only poster; --dry-run prints the request)
 //   check-manifest  lint ci/suites.json and the allowed-signers file
 //
 // Envelope with --json: {ok:true,result} | {ok:false,error:{code,message}}.
-// Exit: 0 ok/pass, 1 fail (verify/run red, lint findings), 2 pending (verify: required OS record missing),
-//       3 error (tooling, git, network), 64 usage.
-// Windows and Linux are tested; macOS paths are written but UNTESTED.
+// Exit: 0 ok/pass, 1 fail (verify/run red, lint findings), 2 pending (verify: no usable record, a required OS record or
+//       an OS-bound suite still missing), 3 error (tooling, git, network; run: error.code host-not-capable), 64 usage.
+// Harnesses key on the envelope's error.code, never on the exit code alone.
+// Windows and Linux are tested; macOS paths are written but UNTESTED (unit tests simulate linux/macos records).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +23,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -79,15 +81,24 @@ export function validateManifest(m) {
   const isStrArr = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && x);
   if (!m || typeof m !== 'object' || Array.isArray(m)) return [`${MANIFEST_PATH}: not a JSON object`];
   if (m.schema !== SCHEMA) e.push(`schema must be "${SCHEMA}"`);
-  if (!isStrArr(m.os_required) || !m.os_required.length) e.push('os_required is mandatory: a non-empty list of windows|linux|macos');
-  else for (const o of m.os_required) if (!OS_CLASSES.includes(o)) e.push(`os_required: unknown OS "${o}"`);
-  if (m.toolchain !== undefined) {
-    if (typeof m.toolchain !== 'object' || Array.isArray(m.toolchain) || !m.toolchain) e.push('toolchain must be an object');
-    else for (const [k, v] of Object.entries(m.toolchain)) {
+  const anyMode = m.os_required === 'any';
+  if (!anyMode && (!isStrArr(m.os_required) || !m.os_required.length)) e.push('os_required is mandatory: "any" or a non-empty list of windows|linux|macos');
+  else if (!anyMode) for (const o of m.os_required) if (!OS_CLASSES.includes(o)) e.push(`os_required: unknown OS "${o}"`);
+  const pins = (obj, where) => {
+    if (typeof obj !== 'object' || Array.isArray(obj) || !obj) return e.push(`${where} must be an object`);
+    for (const [k, v] of Object.entries(obj)) {
       const custom = v && typeof v === 'object';
-      if (!custom && typeof v !== 'string') e.push(`toolchain.${k}: a version string or {version, probe}`);
-      else if (custom && (typeof v.version !== 'string' || typeof v.probe !== 'string')) e.push(`toolchain.${k}: custom entries need version and probe strings`);
-      else if (!custom && !BUILTIN_PROBES[k]) e.push(`toolchain.${k}: no built-in probe; use {version, probe}`);
+      if (!custom && typeof v !== 'string') e.push(`${where}.${k}: a version string or {version, probe}`);
+      else if (custom && (typeof v.version !== 'string' || typeof v.probe !== 'string')) e.push(`${where}.${k}: custom entries need version and probe strings`);
+      else if (!custom && !BUILTIN_PROBES[k]) e.push(`${where}.${k}: no built-in probe; use {version, probe}`);
+    }
+  };
+  if (m.toolchain !== undefined) pins(m.toolchain, 'toolchain');
+  if (m.toolchain_os !== undefined) {
+    if (typeof m.toolchain_os !== 'object' || Array.isArray(m.toolchain_os) || !m.toolchain_os) e.push('toolchain_os must be an object keyed by windows|linux|macos');
+    else for (const [o, p] of Object.entries(m.toolchain_os)) {
+      if (!OS_CLASSES.includes(o)) e.push(`toolchain_os: unknown OS "${o}"`);
+      else pins(p, `toolchain_os.${o}`);
     }
   }
   if (m.setup !== undefined && !isStrArr(m.setup)) e.push('setup must be a list of command strings');
@@ -102,6 +113,7 @@ export function validateManifest(m) {
       if (!isStrArr(s.run) || !s.run.length) e.push(`${w}: run must be a non-empty list of command strings`);
       if (typeof s.required !== 'boolean') e.push(`${w}: required must be true or false`);
       if (!['any', ...OS_CLASSES].includes(s.os ?? 'any')) e.push(`${w}: os must be any|linux|windows|macos`);
+      else if (Array.isArray(m.os_required) && (s.os ?? 'any') !== 'any' && !m.os_required.includes(s.os)) e.push(`${w}: os "${s.os}" is not in os_required, so no host could run it`);
       if (s.paths !== undefined && !isStrArr(s.paths)) e.push(`${w}: paths must be a list of globs`);
       if (s.if_exists !== undefined && !isStrArr(s.if_exists)) e.push(`${w}: if_exists must be a list of repo paths`);
       if (s.timeout_min !== undefined && !(Number.isFinite(s.timeout_min) && s.timeout_min > 0)) e.push(`${w}: timeout_min must be a number > 0`);
@@ -169,9 +181,12 @@ function probeVersion(name, pin) {
 }
 const pinVersion = (p) => (p && typeof p === 'object' ? p.version : p);
 
+// toolchain_os[<os>] is merged over toolchain for that OS, before probing (run) and before comparing (verify).
+export const effectiveToolchain = (manifest, osClass) => ({ ...(manifest.toolchain ?? {}), ...(manifest.toolchain_os?.[osClass] ?? {}) });
+
 function toolchainOf(manifest, osClass) {
   const probes = {}; const drift = [];
-  for (const [name, pin] of Object.entries(manifest.toolchain ?? {})) {
+  for (const [name, pin] of Object.entries(effectiveToolchain(manifest, osClass))) {
     const v = probeVersion(name, pin);
     probes[name] = v;
     if (v === null) drift.push(`${name}: not found (pin ${pinVersion(pin)})`);
@@ -190,7 +205,7 @@ function parseArgs(argv) {
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       const k = (eq > 0 ? a.slice(2, eq) : a.slice(2));
-      if (['json', 'dry-run', 'approved', 'checkout', 'no-push', 'help'].includes(k)) o[k] = true;
+      if (['json', 'dry-run', 'approved', 'checkout', 'no-push', 'preflight', 'help'].includes(k)) o[k] = true;
       else if (eq > 0) o[k] = a.slice(eq + 1);
       else if (i + 1 < argv.length) o[k] = argv[++i];
       else throw usage(`--${k} needs a value`);
@@ -201,8 +216,30 @@ function parseArgs(argv) {
 const repoRoot = (o) => path.resolve(o.root ?? process.cwd());
 
 // ---------- run ----------
+function readValidManifest(cwd) {
+  const manifest = readManifestAt(cwd, null);
+  if (!manifest) throw new CiError('manifest-missing', `${MANIFEST_PATH} not found`, 1);
+  const bad = validateManifest(manifest);
+  if (bad.length) throw new CiError('manifest-invalid', `${MANIFEST_PATH}: ${bad.join('; ')}`, 1);
+  return manifest;
+}
+
+// A host that cannot run the suites writes NO record (never a red one): every gap is listed in one error.
+function notCapable(osClass, drift) {
+  return new CiError('host-not-capable', `${osClass} host cannot run this manifest: ${drift.join('; ')}`, 3);
+}
+
+// host-id = the signer principal after "@", reduced to a filename-safe token.
+const hostIdOf = (signer) => String(signer).split('@').slice(1).join('@').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'host';
+
 function cmdRun(o) {
   const cwd = repoRoot(o);
+  if (o.preflight) {
+    const osClass = hostOs();
+    const { toolchain, drift } = toolchainOf(readValidManifest(cwd), osClass);
+    if (drift.length) throw notCapable(osClass, drift);
+    return { exit: 0, result: { preflight: true, capable: true, os: osClass, toolchain } };
+  }
   const sha = o.sha ? gitOk(cwd, ['rev-parse', '--verify', `${o.sha}^{commit}`], `unknown commit ${o.sha}`) : gitOk(cwd, ['rev-parse', 'HEAD'], 'HEAD');
   if (o.checkout) return runInScratchCheckout(cwd, sha, o);
   const head = gitOk(cwd, ['rev-parse', 'HEAD'], 'HEAD');
@@ -212,15 +249,15 @@ function cmdRun(o) {
     throw new CiError('not-clean-checkout', `refusing: need a clean, detached checkout of ${sha.slice(0, 12)} (HEAD=${head.slice(0, 12)}, detached=${detached}, dirty=${!!dirty}); use --checkout to make one`, 1);
   }
   const tree = gitOk(cwd, ['rev-parse', `${sha}^{tree}`], 'tree');
-  const manifest = readManifestAt(cwd, null);
-  if (!manifest) throw new CiError('manifest-missing', `${MANIFEST_PATH} not found`, 1);
-  const bad = validateManifest(manifest);
-  if (bad.length) throw new CiError('manifest-invalid', `${MANIFEST_PATH}: ${bad.join('; ')}`, 1);
+  const manifest = readValidManifest(cwd);
   const osClass = hostOs();
   const out = path.resolve(o.out ?? process.env.CI_OUT ?? path.join(os.tmpdir(), 'ci-local', tree.slice(0, 12)));
-  fs.mkdirSync(path.join(out, 'logs'), { recursive: true });
-  const recPath = path.join(out, `record.${osClass}.json`);
+  const signer = o.signer ?? process.env.CI_SIGNER ?? `${os.userInfo().username}@${os.hostname()}`;
   const { toolchain, drift } = toolchainOf(manifest, osClass);
+  if (drift.length) throw notCapable(osClass, drift);
+  fs.mkdirSync(path.join(out, 'logs'), { recursive: true });
+  const hostId = hostIdOf(signer);
+  const recPath = path.join(out, `record.${osClass}.${hostId}.json`);
   const key = recordKey(tree, toolchain);
 
   if (fs.existsSync(recPath)) {
@@ -232,7 +269,6 @@ function cmdRun(o) {
 
   const defRef = defaultBranchRef(cwd, o['default-branch']);
   const { files, base } = changedFiles(cwd, sha, defRef);
-  const signer = o.signer ?? process.env.CI_SIGNER ?? `${os.userInfo().username}@${os.hostname()}`;
   const record = { schema: RECORD_SCHEMA, key, tree, commit: sha, base, ci_local_version: VERSION, toolchain, manifest_sha256: sha256(fs.readFileSync(path.join(cwd, MANIFEST_PATH))), os: osClass, host: os.hostname(), signer, created: nowIso(), outcome: 'pass', reason: null, suites: [] };
   const finish = (outcome, reason) => {
     record.outcome = outcome; record.reason = reason;
@@ -241,7 +277,6 @@ function cmdRun(o) {
     return { exit: outcome === 'pass' ? 0 : 1, result: { reuse: false, record: recPath, key, outcome, reason, tree, os: osClass, suites: record.suites.map((s) => ({ id: s.id, status: s.status })) } };
   };
 
-  if (drift.length) return finish('fail', `toolchain-drift: ${drift.join('; ')}`);
   for (const cmd of manifest.setup ?? []) {
     const r = run(cmd, [], { cwd, shell: true, timeout: 30 * 60000 });
     if (r.code !== 0) return finish('fail', `setup-failed: ${cmd}: ${(r.err || r.out).trim().slice(-200)}`);
@@ -331,7 +366,9 @@ function cmdPublish(o) {
   const remote = o.remote ?? 'origin';
   const hasRemote = !o['no-push'] && gitTry(cwd, ['remote', 'get-url', remote]) !== null;
   const base = path.basename(recPath);
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const attempts = 5;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200 + Math.floor(Math.random() * 800)); // jitter: several hosts push one ref
     if (hasRemote) git(cwd, ['fetch', '--quiet', remote, `+${ref}:${ref}`]);
     const parent = gitTry(cwd, ['rev-parse', '--verify', '-q', ref]);
     const files = (parent && readRef(cwd, ref)) || {};
@@ -346,7 +383,7 @@ function cmdPublish(o) {
     if (!hasRemote) return { exit: 0, result: { ref, commit, pushed: false, files: Object.keys(files).sort() } };
     const p = git(cwd, ['push', '--quiet', remote, `${ref}:${ref}`]);
     if (p.code === 0) return { exit: 0, result: { ref, commit, pushed: true, remote, files: Object.keys(files).sort() } };
-    if (attempt === 1) throw new CiError('push-failed', `git push ${ref}: ${p.err.trim()}`);
+    if (attempt === attempts - 1) throw new CiError('push-failed', `git push ${ref}: ${p.err.trim()}`);
   }
   throw new CiError('push-failed', 'unreachable');
 }
@@ -374,8 +411,9 @@ export function verifyCore(o, cwd) {
   sha = gitOk(cwd, ['rev-parse', '--verify', `${sha ?? 'HEAD'}^{commit}`], `unknown commit ${sha}`);
   const tree = gitOk(cwd, ['rev-parse', `${sha}^{tree}`], 'tree');
   const defRef = defaultBranchRef(cwd, o['default-branch']);
-  const summary = { sha, tree, default_branch: defRef, records: [], os_required: [] };
-  const done = () => ({ sha, tree, summary, reasons });
+  const summary = { sha, tree, default_branch: defRef, records: [], os_required: [], notes: [] };
+  const waiting = []; // pending reasons that are not a missing OS record
+  const done = () => ({ sha, tree, summary, reasons, waiting });
 
   // signers: default branch tip only
   let signersText;
@@ -395,71 +433,81 @@ export function verifyCore(o, cwd) {
   let defManifest = null;
   if (defRef) {
     try { defManifest = readManifestAt(cwd, defRef); } catch { /* a broken default manifest counts as absent */ }
-    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', MANIFEST_PATH, '.standards/ci-local', '.github']);
+    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', 'ci', '.standards/ci-local', '.github']);
     if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (needs the human ci-manifest-approved label)`);
   }
-  const requiredOs = o.os ? [o.os] : (defManifest?.os_required ?? head.os_required);
-  summary.os_required = requiredOs;
+  // os_required: "any" = every verified record counts, one passing record suffices; a list = all-of (each OS needs a record).
+  const osSpec = o.os ? [o.os] : (defManifest?.os_required ?? head.os_required);
+  const anyMode = osSpec === 'any';
+  summary.os_required = osSpec;
 
   // the record ref
   const ref = `refs/ci/${tree}`;
   if (!gitTry(cwd, ['rev-parse', '--verify', '-q', ref]) && gitTry(cwd, ['remote', 'get-url', o.remote ?? 'origin']) !== null) git(cwd, ['fetch', '--quiet', o.remote ?? 'origin', `+${ref}:${ref}`]);
   const files = readRef(cwd, ref);
-  if (!files) { fail('no-record', `no ${ref} (the harness has not published)`); return done(); }
+  if (!files) { waiting.push('no record yet'); return done(); }
 
   const { files: changed } = changedFiles(cwd, sha, defRef);
-  const present = {}; // os -> record (signature-verified, bound)
-  for (const name of Object.keys(files).filter((n) => /^record\.[a-z]+\.json$/.test(n)).sort()) {
+  // A record that fails any check is ignored and listed as a note: ignoring one can never grant a pass.
+  const verified = [];
+  const note = (code, detail) => summary.notes.push({ code, detail });
+  for (const name of Object.keys(files).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n)).sort()) {
     const osName = name.split('.')[1];
     const sigBuf = files[`${name}.sig`];
     let rec; try { rec = JSON.parse(files[name].toString('utf8')); } catch { /* bad-signature below */ }
-    if (!sigBuf) { fail('unsigned', `${name} has no .sig`); continue; }
+    if (!sigBuf) { note('unsigned', `${name} has no .sig`); continue; }
     const v = sshVerify(signersText, rec?.signer ?? '', files[name], sigBuf, o['verify-time'] === 'record' && rec?.created ? rec.created.replace(/[-:TZ]/g, '').slice(0, 14) : null);
-    if (!rec || !v.ok) { fail('bad-signature', `${name}: ${v.detail}`); continue; }
-    if (rec.tree !== tree) { fail('wrong-tree', `${name}: record.tree ${String(rec.tree).slice(0, 12)} != head tree ${tree.slice(0, 12)}`); continue; }
-    if (rec.os !== osName || rec.toolchain?.os !== osName) { fail('wrong-os', `${name}: record claims ${rec.os}/${rec.toolchain?.os}`); continue; }
-    if (rec.ci_local_version !== VERSION) { fail('ci-version-mismatch', `${name}: record ${rec.ci_local_version}, vendored ${VERSION}`); continue; }
-    const tcBad = Object.entries(head.toolchain ?? {}).filter(([k, pin]) => !versionMatches(pinVersion(pin), rec.toolchain?.probes?.[k]));
-    if (tcBad.length) { fail('toolchain-mismatch', `${name}: ${tcBad.map(([k, p]) => `${k} have ${rec.toolchain?.probes?.[k] ?? 'none'} pin ${pinVersion(p)}`).join('; ')}`); continue; }
-    if (rec.key !== recordKey(rec.tree, rec.toolchain)) { fail('bad-key', `${name}: key does not match tree+toolchain+version`); continue; }
-    present[osName] = rec;
-    summary.records.push({ os: osName, signer: rec.signer, host: rec.host, outcome: rec.outcome, created: rec.created });
+    if (!rec || !v.ok) { note('bad-signature', `${name}: ${v.detail}`); continue; }
+    if (rec.tree !== tree) { note('wrong-tree', `${name}: record.tree ${String(rec.tree).slice(0, 12)} != head tree ${tree.slice(0, 12)}`); continue; }
+    if (rec.os !== osName || rec.toolchain?.os !== osName) { note('wrong-os', `${name}: record claims ${rec.os}/${rec.toolchain?.os}`); continue; }
+    if (rec.ci_local_version !== VERSION) { note('ci-version-mismatch', `${name}: record ${rec.ci_local_version}, vendored ${VERSION}`); continue; }
+    const tcBad = Object.entries(effectiveToolchain(head, osName)).filter(([k, pin]) => !versionMatches(pinVersion(pin), rec.toolchain?.probes?.[k]));
+    if (tcBad.length) { note('toolchain-mismatch', `${name}: ${tcBad.map(([k, p]) => `${k} have ${rec.toolchain?.probes?.[k] ?? 'none'} pin ${pinVersion(p)}`).join('; ')}`); continue; }
+    if (rec.key !== recordKey(rec.tree, rec.toolchain)) { note('bad-key', `${name}: key does not match tree+toolchain+version`); continue; }
+    verified.push(rec);
   }
 
-  // OS coverage and suites
-  const missing = requiredOs.filter((x) => !present[x]);
-  const usable = requiredOs.filter((x) => present[x]).map((x) => present[x]);
+  // Records from OSes that do not count are ignored (any-mode: every OS counts).
+  const usable = anyMode ? verified : verified.filter((r) => osSpec.includes(r.os));
+  for (const r of usable) summary.records.push({ os: r.os, signer: r.signer, host: r.host, outcome: r.outcome, created: r.created });
+  const missing = anyMode ? [] : osSpec.filter((x) => !usable.some((r) => r.os === x));
+  if (!usable.length && !missing.length) waiting.push('no usable record yet');
   for (const r of usable) if (r.outcome !== 'pass') fail('record-failed', `${r.os}: ${r.reason ?? 'outcome fail'}`);
   for (const s of head.suites.filter((x) => x.required)) {
     const sts = usable.map((r) => ({ os: r.os, st: r.suites?.find((x) => x.id === s.id)?.status }));
     const failedOn = sts.find((x) => x.st === 'failed');
     if (failedOn) { fail('suite-failed', `${s.id} failed on ${failedOn.os}`); continue; }
+    // skipped:os is only honest on a host the suite excludes
+    const abuse = sts.find((x) => x.st === 'skipped:os' && ((s.os ?? 'any') === 'any' || s.os === x.os));
+    if (abuse) { fail('skipped-os-abuse', `${s.id} was skipped:os on a ${abuse.os} record, but the suite includes ${abuse.os}`); continue; }
     if (!usable.length) continue;
     if (sts.some((x) => x.st === 'passed' || x.st === 'flaky')) continue;
     const bad = sts.find((x) => x.st === undefined); if (bad) { fail('suite-missing', `${s.id} absent from the ${bad.os} record`); continue; }
     const selected = suiteSelected(s, changed);
     const allPresent = (s.if_exists ?? []).every((p) => git(cwd, ['cat-file', '-e', `${sha}:${p}`]).code === 0);
-    if (sts.every((x) => x.st === 'skipped:os')) fail('skipped-os', `${s.id}: needs a ${s.os} host`);
+    if (sts.every((x) => x.st === 'skipped:os')) waiting.push(`${s.id}: needs a ${s.os} host`);
     else if (sts.some((x) => x.st === 'skipped:path') && selected) fail('skipped-path-abuse', `${s.id} was skipped by path but the diff selects it`);
     else if (sts.some((x) => x.st === 'skipped:absent') && allPresent) fail('skipped-absent-abuse', `${s.id} was skipped for absent files that exist at the head`);
     else if (!sts.some((x) => x.st === 'skipped:path' || x.st === 'skipped:absent')) fail('suite-missing', `${s.id}: ${sts.map((x) => `${x.os}=${x.st}`).join(' ')}`);
   }
-  if (!reasons.length && missing.length) return { ...done(), pending: missing };
+  if (!reasons.length && (missing.length || waiting.length)) return { ...done(), pending: missing };
   return done();
 }
+
+const verdictOf = (v) => (v.reasons.length ? 'fail' : (v.pending?.length || v.waiting.length) ? 'pending' : 'pass');
 
 function cmdVerify(o) {
   const cwd = repoRoot(o);
   const v = verifyCore(o, cwd);
-  const verdict = v.reasons.length ? 'fail' : v.pending ? 'pending' : 'pass';
-  const result = { verdict, ...v.summary, reasons: v.reasons, missing_os: v.pending ?? [] };
+  const verdict = verdictOf(v);
+  const result = { verdict, ...v.summary, reasons: v.reasons, missing_os: v.pending ?? [], waiting: v.waiting };
   return { exit: verdict === 'pass' ? 0 : verdict === 'fail' ? 1 : 2, result };
 }
 
 // ---------- status ----------
-export function statusRequest({ repo, sha, verdict, reasons, missing, tree, apiBase, targetUrl }) {
+export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = [], tree, apiBase, targetUrl }) {
   const state = { pass: 'success', pending: 'pending', fail: 'failure' }[verdict];
-  const desc = verdict === 'pass' ? 'signed records verified' : verdict === 'pending' ? `waiting for ${missing.join(', ')} record` : `${reasons[0].code}: ${reasons[0].detail}`;
+  const desc = verdict === 'pass' ? 'signed records verified' : verdict === 'pending' ? (missing.length ? `waiting for ${missing.join(', ')} record` : waiting[0]) : `${reasons[0].code}: ${reasons[0].detail}`;
   return {
     method: 'POST',
     url: `${apiBase}/repos/${repo}/statuses/${sha}`,
@@ -477,9 +525,9 @@ async function cmdStatus(o) {
     if (!repo) throw usage('status needs --repo OWNER/REPO');
   }
   const v = verifyCore(o, cwd);
-  const verdict = v.reasons.length ? 'fail' : v.pending ? 'pending' : 'pass';
+  const verdict = verdictOf(v);
   const apiBase = (o['api-base'] ?? process.env.CI_GITHUB_API ?? 'https://api.github.com').replace(/\/$/, '');
-  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], tree: v.tree, apiBase, targetUrl: o['target-url'] });
+  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, apiBase, targetUrl: o['target-url'] });
   if (o['dry-run']) return { exit: 0, result: { dry_run: true, verdict, request: req } };
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
   if (!token) throw new CiError('no-token', 'status needs GH_TOKEN (or GITHUB_TOKEN) in the environment');
@@ -525,8 +573,9 @@ export async function main(argv) {
   }
 }
 function humanLine(verb, r) {
-  if (verb === 'verify') return `verify: ${r.verdict}${r.reasons.length ? ` (${r.reasons.map((x) => `${x.code}: ${x.detail}`).join('; ')})` : r.missing_os.length ? ` (waiting for ${r.missing_os.join(', ')})` : ''}`;
+  if (verb === 'verify') return `verify: ${r.verdict}${r.reasons.length ? ` (${r.reasons.map((x) => `${x.code}: ${x.detail}`).join('; ')})` : r.verdict === 'pending' ? ` (${r.missing_os.length ? `waiting for ${r.missing_os.join(', ')}` : r.waiting.join('; ')})` : ''}${r.notes?.length ? ` [ignored: ${r.notes.map((x) => x.code).join(', ')}]` : ''}`;
   if (verb === 'check-manifest') return r.findings.length ? r.findings.join('\n') : 'ci-local manifest ok';
+  if (verb === 'run' && r.preflight) return `run --preflight: capable on ${r.os}`;
   if (verb === 'run') return `run: ${r.reuse ? 'reuse ' : ''}${r.outcome}${r.reason ? ` (${r.reason})` : ''} ${r.record}`;
   return JSON.stringify(r);
 }

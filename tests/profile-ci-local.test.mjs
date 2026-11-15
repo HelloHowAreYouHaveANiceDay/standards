@@ -1,19 +1,26 @@
-// ci-local 1.0.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
+// ci-local 1.1.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
 // ed25519 key. Every failure mode asserts a NAMED reason. ssh-keygen -Y and git are real; nothing touches GitHub
-// (status POSTs go to a local http server).
+// (status POSTs go to a local http server). os_required "any" and the all-of list are also covered on SIMULATED
+// linux / macos / windows records (signed with the fixture key), because CI runs on one host OS at a time.
+// A 1.0.1 tree still verifies with its vendored 1.0.1 (the compat test at the bottom).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
+import crypto from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.0.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.1.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
+const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
+const { VERSION } = await import(pathToFileURL(CI_SRC).href);
 const HOST = { win32: 'windows', linux: 'linux', darwin: 'macos' }[process.platform];
 const OTHER = HOST === 'linux' ? 'windows' : 'linux';
+const rec = (osName, host = 'test') => `record.${osName}.${host}.json`; // 1.1.0 per-host record file name
 const sh = (cmd, args, cwd, input) => { const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', input }); assert.equal(r.status, 0, `${cmd} ${args.join(' ')}: ${r.stderr}`); return r.stdout.trim(); };
 const g = (cwd, ...a) => sh('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], cwd);
 
@@ -23,17 +30,19 @@ const KEY2 = path.join(ROOT, 'k2');
 sh('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'test', '-f', KEY]);
 sh('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'test2', '-f', KEY2]);
 const pub = (k) => fs.readFileSync(`${k}.pub`, 'utf8').trim().split(' ').slice(0, 2).join(' ');
-const signers = (valid = '20991231') => `# fixture\ndim@test namespaces="ci-result@hhay",valid-before="${valid}" ${pub(KEY)}\n`;
+const PRINCIPALS = ['dim@test', 'dim@win2', 'dim@lin1', 'dim@mac1'];
+const signers = (valid = '20991231') => `# fixture\n${PRINCIPALS.map((p) => `${p} namespaces="ci-result@hhay",valid-before="${valid}" ${pub(KEY)}`).join('\n')}\n`;
 const node = (code) => `node -e "${code}"`;
 const manifest = (over = {}) => JSON.stringify({ schema: 'ci-local/1', os_required: [HOST], toolchain: { node: process.versions.node.split('.')[0] }, setup: [], suites: [{ id: 'unit', run: [node('process.exit(0)')], required: true, os: 'any', paths: ['**'], timeout_min: 2 }], ...over }, null, 2);
+const anyManifest = (over = {}) => manifest({ os_required: 'any', ...over });
 
 let n = 0;
-// A repo whose main has ci.mjs + manifest + signers; returns {repo, main, ci(args), out}.
-function fixture({ man = manifest(), sig = signers() } = {}) {
+// A repo whose main has ci.mjs + manifest + signers.
+function fixture({ man = manifest(), sig = signers(), ciSrc = CI_SRC } = {}) {
   const repo = path.join(ROOT, `r${++n}`);
   fs.mkdirSync(path.join(repo, '.standards/ci-local'), { recursive: true });
   fs.mkdirSync(path.join(repo, 'ci'));
-  fs.copyFileSync(CI_SRC, path.join(repo, '.standards/ci-local/ci.mjs'));
+  fs.copyFileSync(ciSrc, path.join(repo, '.standards/ci-local/ci.mjs'));
   fs.writeFileSync(path.join(repo, '.standards/ci-local/allowed_signers.org'), sig);
   fs.writeFileSync(path.join(repo, 'ci/suites.json'), man);
   fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
@@ -42,8 +51,8 @@ function fixture({ man = manifest(), sig = signers() } = {}) {
   return repo;
 }
 const env = { ...process.env, CI_SIGNER: 'dim@test' };
-function ci(repo, args) {
-  const r = spawnSync(process.execPath, [path.join(repo, '.standards/ci-local/ci.mjs'), ...args, '--json'], { cwd: repo, encoding: 'utf8', env });
+function ci(repo, args, extraEnv = {}) {
+  const r = spawnSync(process.execPath, [path.join(repo, '.standards/ci-local/ci.mjs'), ...args, '--json'], { cwd: repo, encoding: 'utf8', env: { ...env, ...extraEnv } });
   let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`no envelope (exit ${r.status}): ${r.stdout}${r.stderr}`); }
   return { code: r.status, ...j };
 }
@@ -55,15 +64,29 @@ function branch(repo, name, files) {
   g(repo, 'checkout', '-q', 'main');
   return sha;
 }
-// run + sign + publish (local ref only) for a commit; returns the record path.
-function publish(repo, sha, { key = KEY, out } = {}) {
+// run + sign + publish (local ref only) for a commit on THIS host; returns the record path.
+function publish(repo, sha, { key = KEY, out, signer } = {}) {
   const o = out ?? path.join(repo, '..', `out-${sha.slice(0, 8)}-${n}`);
-  const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
-  const rec = path.join(o, `record.${HOST}.json`);
+  const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o, ...(signer ? ['--signer', signer] : [])]);
   assert.ok(r.ok, JSON.stringify(r));
-  assert.equal(ci(repo, ['sign', rec, '--key', key]).ok, true);
-  assert.equal(ci(repo, ['publish', rec, '--no-push']).ok, true);
-  return { rec, run: r };
+  const file = r.result.record;
+  assert.equal(ci(repo, ['sign', file, '--key', key]).ok, true);
+  assert.equal(ci(repo, ['publish', file, '--no-push']).ok, true);
+  return { rec: file, run: r };
+}
+// A record for a host OS we are not running on: built from the manifest, signed with the fixture key, put on the ref.
+function simulate(repo, sha, osName, { signer = { linux: 'dim@lin1', macos: 'dim@mac1', windows: 'dim@win2' }[osName], status = {}, outcome = 'pass', reason = null, probes, key = KEY, version = VERSION } = {}) {
+  const tree = treeOf(repo, sha);
+  const man = JSON.parse(g(repo, 'show', `${sha}:ci/suites.json`));
+  const toolchain = { os: osName, arch: 'x64', probes: probes ?? { node: process.versions.node } };
+  const suites = man.suites.map((s) => ({ id: s.id, required: s.required, status: status[s.id] ?? ((s.os ?? 'any') !== 'any' && s.os !== osName ? 'skipped:os' : 'passed'), duration_s: 0.1, log_sha256: null }));
+  const record = { schema: 'ci-record/1', key: crypto.createHash('sha256').update(JSON.stringify({ tree, toolchain, ci_local_version: version })).digest('hex'), tree, commit: sha, base: null, ci_local_version: version, toolchain, manifest_sha256: 'x', os: osName, host: 'sim', signer, created: '2026-11-14T12:00:00Z', outcome, reason, suites };
+  const f = path.join(ROOT, `sim${++n}`, rec(osName, signer.split('@')[1]));
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, `${JSON.stringify(record, null, 2)}\n`);
+  assert.equal(ci(repo, ['sign', f, '--key', key]).ok, true);
+  assert.equal(ci(repo, ['publish', f, '--no-push']).ok, true);
+  return f;
 }
 // Put arbitrary files on refs/ci/<tree> (for forged / unsigned records).
 function putRef(repo, tree, files) {
@@ -74,30 +97,54 @@ function putRef(repo, tree, files) {
 }
 const treeOf = (repo, sha) => g(repo, 'rev-parse', `${sha}^{tree}`);
 const reasons = (v) => v.result.reasons.map((r) => r.code);
+const notes = (v) => v.result.notes.map((r) => r.code);
+const feat = (repo) => branch(repo, 'feat', { 'b.txt': 'b\n' });
 
 test('a passing manifest run + sign + publish + verify succeeds; a second run reuses the record', () => {
   const repo = fixture();
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
-  const { rec, run } = publish(repo, sha);
+  const sha = feat(repo);
+  const { rec: f, run } = publish(repo, sha);
+  assert.equal(path.basename(f), rec(HOST));
   assert.equal(run.result.outcome, 'pass');
   assert.deepEqual(run.result.suites, [{ id: 'unit', status: 'passed' }]);
-  const r = JSON.parse(fs.readFileSync(rec, 'utf8'));
-  assert.equal(r.tree, treeOf(repo, sha)); assert.equal(r.signer, 'dim@test'); assert.equal(r.os, HOST); assert.equal(r.ci_local_version, '1.0.0');
+  const r = JSON.parse(fs.readFileSync(f, 'utf8'));
+  assert.equal(r.tree, treeOf(repo, sha)); assert.equal(r.signer, 'dim@test'); assert.equal(r.os, HOST); assert.equal(r.ci_local_version, VERSION);
   const v = ci(repo, ['verify', '--sha', sha]);
   assert.equal(v.code, 0, JSON.stringify(v)); assert.equal(v.result.verdict, 'pass'); assert.deepEqual(v.result.records.map((x) => x.os), [HOST]);
-  assert.equal(ci(repo, ['run', '--checkout', '--sha', sha, '--out', path.dirname(rec)]).result.reuse, true);
+  assert.equal(ci(repo, ['run', '--checkout', '--sha', sha, '--out', path.dirname(f)]).result.reuse, true);
 });
 
-test('publish keeps the other OS record already on the ref', () => {
+test('VERSION equals the profile version (1.0.1 shipped 1.0.0)', () => {
+  const cj = JSON.parse(fs.readFileSync(path.join(DIR, '.standards/ci-local/check.json'), 'utf8'));
+  const expected = process.env.CI_LOCAL_SRC ? fs.readFileSync(path.join(KIT_ROOT, 'profiles/ci-local/CHANGELOG.md'), 'utf8').match(/^## (\d+\.\d+\.\d+)/m)[1] : cj.version;
+  assert.equal(VERSION, expected);
+  const r = spawnSync(process.execPath, [CI_SRC, '--help'], { encoding: 'utf8' });
+  assert.match(r.stdout, new RegExp(`^ci-local ${expected.replace(/\./g, '\\.')}:`));
+});
+
+test('publish keeps the other hosts\' records already on the ref', () => {
   const repo = fixture();
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
-  const { rec } = publish(repo, sha);
-  const other = path.join(path.dirname(rec), `record.${OTHER}.json`);
-  const j = JSON.parse(fs.readFileSync(rec, 'utf8')); j.os = OTHER; j.toolchain.os = OTHER;
-  fs.writeFileSync(other, JSON.stringify(j));
-  ci(repo, ['sign', other, '--key', KEY]); ci(repo, ['publish', other, '--no-push']);
+  const sha = feat(repo);
+  publish(repo, sha);
+  simulate(repo, sha, OTHER, { signer: 'dim@lin1' });
   const names = g(repo, 'ls-tree', '--name-only', `refs/ci/${treeOf(repo, sha)}`).split('\n');
-  assert.deepEqual(names, [`record.${HOST}.json`, `record.${HOST}.json.sig`, `record.${OTHER}.json`, `record.${OTHER}.json.sig`, 'summary.txt'].sort());
+  assert.deepEqual(names, [rec(HOST), `${rec(HOST)}.sig`, rec(OTHER, 'lin1'), `${rec(OTHER, 'lin1')}.sig`, 'summary.txt'].sort());
+});
+
+test('per-host record files: two hosts on one OS keep separate files; a host re-running replaces only its own', () => {
+  const repo = fixture({ man: anyManifest() });
+  const sha = feat(repo);
+  const o = path.join(ROOT, `o${++n}`);
+  const a = publish(repo, sha, { out: o });
+  const b = publish(repo, sha, { out: o, signer: 'dim@win2' });
+  assert.equal(path.basename(a.rec), rec(HOST, 'test')); assert.equal(path.basename(b.rec), rec(HOST, 'win2'));
+  assert.equal(b.run.result.reuse, false, 'the other host does not reuse test\'s record');
+  assert.equal(ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]).result.reuse, true);
+  const before = g(repo, 'show', `refs/ci/${treeOf(repo, sha)}:${rec(HOST, 'test')}`);
+  fs.rmSync(b.rec); fs.rmSync(`${b.rec}.sig`);
+  publish(repo, sha, { out: o, signer: 'dim@win2' });
+  assert.equal(g(repo, 'show', `refs/ci/${treeOf(repo, sha)}:${rec(HOST, 'test')}`), before);
+  assert.deepEqual(ci(repo, ['verify', '--sha', sha]).result.records.map((x) => x.signer).sort(), ['dim@test', 'dim@win2']);
 });
 
 test('publish pushes refs/ci/<tree> to a remote and verify fetches it in a fresh clone', () => {
@@ -105,11 +152,11 @@ test('publish pushes refs/ci/<tree> to a remote and verify fetches it in a fresh
   const bare = path.join(ROOT, `bare${++n}.git`);
   sh('git', ['init', '-q', '--bare', '-b', 'main', bare], ROOT);
   g(repo, 'remote', 'add', 'origin', bare); g(repo, 'push', '-q', 'origin', 'main');
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' }); g(repo, 'push', '-q', 'origin', 'feat');
+  const sha = feat(repo); g(repo, 'push', '-q', 'origin', 'feat');
   const o = path.join(ROOT, `out${++n}`);
-  ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
-  ci(repo, ['sign', path.join(o, `record.${HOST}.json`), '--key', KEY]);
-  const p = ci(repo, ['publish', path.join(o, `record.${HOST}.json`)]);
+  const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
+  ci(repo, ['sign', r.result.record, '--key', KEY]);
+  const p = ci(repo, ['publish', r.result.record]);
   assert.equal(p.result.pushed, true, JSON.stringify(p));
   const clone = path.join(ROOT, `clone${++n}`);
   sh('git', ['clone', '-q', bare, clone], ROOT);
@@ -118,59 +165,129 @@ test('publish pushes refs/ci/<tree> to a remote and verify fetches it in a fresh
   assert.equal(v.code, 0, JSON.stringify(v));
 });
 
-test('verify fails with a named reason: no record, tampered record, unsigned, wrong signer, expired key', () => {
+test('unverifiable records are ignored and listed as notes: tampered, unsigned, wrong signer, expired key never pass', () => {
   let repo = fixture();
-  let sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  let sha = feat(repo);
   let v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['no-record']);
+  assert.equal(v.code, 2); assert.equal(v.result.verdict, 'pending'); assert.deepEqual(v.result.waiting, ['no record yet']);
+  assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.description, 'no record yet');
 
   // tampered: edit the record after signing
-  let { rec } = (() => {
-    const o = path.join(ROOT, `o${++n}`);
-    ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
-    const f = path.join(o, `record.${HOST}.json`);
-    ci(repo, ['sign', f, '--key', KEY]);
-    const j = JSON.parse(fs.readFileSync(f, 'utf8')); j.suites[0].status = 'passed'; j.created = '2000-01-01T00:00:00Z';
-    fs.writeFileSync(f, JSON.stringify(j, null, 2));
-    ci(repo, ['publish', f, '--no-push']);
-    return { rec: f };
-  })();
+  const o = path.join(ROOT, `o${++n}`);
+  const f = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]).result.record;
+  ci(repo, ['sign', f, '--key', KEY]);
+  const j = JSON.parse(fs.readFileSync(f, 'utf8')); j.suites[0].status = 'passed'; j.created = '2000-01-01T00:00:00Z';
+  fs.writeFileSync(f, JSON.stringify(j, null, 2));
+  ci(repo, ['publish', f, '--no-push']);
   v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['bad-signature']);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['bad-signature']); assert.deepEqual(reasons(v), []);
 
   // unsigned: record on the ref without a .sig
-  const tree = treeOf(repo, sha);
-  putRef(repo, tree, { [`record.${HOST}.json`]: fs.readFileSync(rec) });
+  putRef(repo, treeOf(repo, sha), { [rec(HOST)]: fs.readFileSync(f) });
   v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['unsigned']); assert.match(v.result.reasons[0].detail, new RegExp(`record\\.${HOST}\\.json has no \\.sig`));
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['unsigned']); assert.match(v.result.notes[0].detail, new RegExp(`${rec(HOST).replace(/\./g, '\\.')} has no \\.sig`));
 
   // wrong signer: valid record signed by a key that is not in allowed signers
-  repo = fixture(); sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  repo = fixture(); sha = feat(repo);
   publish(repo, sha, { key: KEY2 });
   v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['bad-signature']);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['bad-signature']);
 
   // expired key
-  repo = fixture({ sig: signers('20200101') }); sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  repo = fixture({ sig: signers('20200101') }); sha = feat(repo);
   publish(repo, sha);
   v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['bad-signature']);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['bad-signature']);
 });
 
-test('verify fails wrong-tree when a validly signed record for another tree sits on the head tree ref', () => {
-  const repo = fixture();
+test('an unverifiable record never blocks a good one in any-mode, and a good one never rescues it', () => {
+  const repo = fixture({ man: anyManifest() });
+  const sha = feat(repo);
+  simulate(repo, sha, 'linux', { signer: 'dim@lin1', key: KEY2 });      // signed by a key not in the signers file
+  let v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['bad-signature']); assert.deepEqual(v.result.waiting, ['no usable record yet']);
+  simulate(repo, sha, 'macos', { signer: 'dim@mac1' });
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 0, JSON.stringify(v)); assert.deepEqual(notes(v), ['bad-signature']); assert.deepEqual(v.result.records.map((x) => x.os), ['macos']);
+});
+
+test('verify ignores a record bound to the wrong tree, version or toolchain (notes, never a pass)', () => {
+  const repo = fixture({ man: anyManifest() });
   const a = branch(repo, 'a', { 'b.txt': 'b\n' });
   const b = branch(repo, 'b', { 'c.txt': 'c\n' });
-  const { rec } = publish(repo, a);            // record for tree(a), signed
-  const files = { [`record.${HOST}.json`]: fs.readFileSync(rec), [`record.${HOST}.json.sig`]: fs.readFileSync(`${rec}.sig`) };
-  putRef(repo, treeOf(repo, b), files);        // replay onto tree(b)
-  const v = ci(repo, ['verify', '--sha', b]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['wrong-tree']); assert.match(v.result.reasons[0].detail, /record\.tree .* != head tree/);
+  const f = simulate(repo, a, 'linux', { signer: 'dim@lin1' });       // record + sig for tree(a)
+  putRef(repo, treeOf(repo, b), { [path.basename(f)]: fs.readFileSync(f), [`${path.basename(f)}.sig`]: fs.readFileSync(`${f}.sig`) }); // replay onto tree(b)
+  let v = ci(repo, ['verify', '--sha', b]);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['wrong-tree']); assert.match(v.result.notes[0].detail, /record\.tree .* != head tree/);
+
+  const c = branch(repo, 'c', { 'd.txt': 'd\n' });
+  simulate(repo, c, 'linux', { signer: 'dim@lin1', version: '1.0.0' });
+  v = ci(repo, ['verify', '--sha', c]);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['ci-version-mismatch']);
+
+  const d = branch(repo, 'd', { 'e.txt': 'e\n' });
+  simulate(repo, d, 'linux', { signer: 'dim@lin1', probes: { node: '1.2.3' } });
+  v = ci(repo, ['verify', '--sha', d]);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['toolchain-mismatch']); assert.match(v.result.notes[0].detail, /node have 1\.2\.3 pin \d+/);
 });
 
-test('a missing required OS is pending (exit 2) naming the OS; --os limits the check to one host', () => {
+test('any-mode: one passing record from a simulated linux, macos or windows host is enough', () => {
+  for (const osName of ['linux', 'macos', 'windows']) {
+    const repo = fixture({ man: anyManifest() });
+    const sha = feat(repo);
+    simulate(repo, sha, osName);
+    const v = ci(repo, ['verify', '--sha', sha]);
+    assert.equal(v.code, 0, `${osName}: ${JSON.stringify(v)}`); assert.equal(v.result.verdict, 'pass'); assert.equal(v.result.os_required, 'any');
+    assert.deepEqual(v.result.records.map((x) => x.os), [osName]);
+    assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.state, 'success');
+  }
+});
+
+test('any-mode: a real red from any host is red; passing records elsewhere do not rescue it', () => {
+  let repo = fixture({ man: anyManifest() });
+  let sha = feat(repo);
+  simulate(repo, sha, 'linux', { signer: 'dim@lin1' });
+  simulate(repo, sha, 'macos', { signer: 'dim@mac1', status: { unit: 'failed' }, outcome: 'fail', reason: 'suite-failed: unit' });
+  let v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v).sort(), ['record-failed', 'suite-failed']); assert.match(JSON.stringify(v.result.reasons), /unit failed on macos/);
+  assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.state, 'failure');
+
+  // a record outcome of fail with every required suite green (e.g. a failed setup or optional suite) is still a failure
+  repo = fixture({ man: anyManifest() }); sha = feat(repo);
+  simulate(repo, sha, 'linux', { outcome: 'fail', reason: 'setup-failed: x' });
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['record-failed']);
+});
+
+test('all-of mode on simulated hosts: every listed OS needs a record; one missing is pending; a red on any is red; others are ignored', () => {
+  const man = manifest({ os_required: ['linux', 'macos'] });
+  let repo = fixture({ man }); let sha = feat(repo);
+  simulate(repo, sha, 'linux');
+  let v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 2); assert.deepEqual(v.result.missing_os, ['macos']);
+  assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.description, 'waiting for macos record');
+  simulate(repo, sha, 'windows', { signer: 'dim@win2' }); // not in os_required: ignored
+  assert.equal(ci(repo, ['verify', '--sha', sha]).code, 2);
+  simulate(repo, sha, 'macos');
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 0, JSON.stringify(v)); assert.deepEqual(v.result.records.map((x) => x.os).sort(), ['linux', 'macos']);
+  assert.equal(ci(repo, ['verify', '--sha', sha, '--os', 'linux']).code, 0);
+
+  repo = fixture({ man }); sha = feat(repo);
+  simulate(repo, sha, 'linux'); simulate(repo, sha, 'macos', { status: { unit: 'failed' }, outcome: 'fail', reason: 'suite-failed: unit' });
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.ok(reasons(v).includes('suite-failed'));
+
+  // the local-merge shape: --os limits the check to one host, even in any-mode
+  repo = fixture({ man: anyManifest() }); sha = feat(repo);
+  simulate(repo, sha, 'linux');
+  assert.equal(ci(repo, ['verify', '--sha', sha, '--os', 'linux']).code, 0);
+  assert.equal(ci(repo, ['verify', '--sha', sha, '--os', 'macos']).code, 2);
+});
+
+test('a missing required OS is pending (exit 2) naming the OS; --os limits the check to one host (real host record)', () => {
   const repo = fixture({ man: manifest({ os_required: [HOST, OTHER] }) });
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  const sha = feat(repo);
   publish(repo, sha);
   const v = ci(repo, ['verify', '--sha', sha]);
   assert.equal(v.code, 2, JSON.stringify(v)); assert.equal(v.result.verdict, 'pending'); assert.deepEqual(v.result.missing_os, [OTHER]);
@@ -179,13 +296,22 @@ test('a missing required OS is pending (exit 2) naming the OS; --os limits the c
   assert.equal(ci(repo, ['verify', '--sha', sha, '--os', HOST]).code, 0);
 });
 
+test('the legacy record.<os>.json file name is still read', () => {
+  const repo = fixture({ man: anyManifest() });
+  const sha = feat(repo);
+  const f = simulate(repo, sha, 'linux', { signer: 'dim@lin1' });
+  putRef(repo, treeOf(repo, sha), { 'record.linux.json': fs.readFileSync(f), 'record.linux.json.sig': fs.readFileSync(`${f}.sig`) });
+  const v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 0, JSON.stringify(v)); assert.deepEqual(v.result.records.map((x) => x.os), ['linux']);
+});
+
 test('a failing required suite writes a red record and verify names the suite; flaky passes on retry', () => {
   const repo = fixture({ man: manifest({ suites: [{ id: 'unit', run: [node('process.exit(1)')], required: true, os: 'any' }] }) });
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  const sha = feat(repo);
   const o = path.join(ROOT, `o${++n}`);
   const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
   assert.equal(r.code, 1); assert.equal(r.result.outcome, 'fail'); assert.match(r.result.reason, /^suite-failed: unit/);
-  ci(repo, ['sign', path.join(o, `record.${HOST}.json`), '--key', KEY]); ci(repo, ['publish', path.join(o, `record.${HOST}.json`), '--no-push']);
+  ci(repo, ['sign', r.result.record, '--key', KEY]); ci(repo, ['publish', r.result.record, '--no-push']);
   const v = ci(repo, ['verify', '--sha', sha]);
   assert.equal(v.code, 1); assert.ok(reasons(v).includes('suite-failed')); assert.match(JSON.stringify(v.result.reasons), /unit failed on/);
   assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.state, 'failure');
@@ -194,16 +320,59 @@ test('a failing required suite writes a red record and verify names the suite; f
   const flag = path.join(ROOT, `flag${n}`).replace(/\\/g, '/');
   const code = `const f='${flag}';const fs=require('fs');if(fs.existsSync(f)){process.exit(0)}fs.writeFileSync(f,'x');process.exit(1)`;
   const repo2 = fixture({ man: manifest({ suites: [{ id: 'unit', run: [node(code)], required: true, os: 'any' }] }) });
-  const sha2 = branch(repo2, 'feat', { 'b.txt': 'b\n' });
+  const sha2 = feat(repo2);
   const r2 = ci(repo2, ['run', '--checkout', '--sha', sha2, '--out', path.join(ROOT, `o${++n}`)]);
   assert.equal(r2.code, 0); assert.deepEqual(r2.result.suites, [{ id: 'unit', status: 'flaky' }]);
 });
 
-test('toolchain drift: a pin the host does not meet is a red record naming the tool, no suites run', () => {
-  const repo = fixture({ man: manifest({ toolchain: { node: '999' } }) });
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
-  const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', path.join(ROOT, `o${++n}`)]);
-  assert.equal(r.code, 1); assert.match(r.result.reason, /^toolchain-drift: node: have \d+/); assert.deepEqual(r.result.suites, []);
+test('host not capable: a pin the host does not meet writes NO record, exits 3 with error.code host-not-capable, every gap listed', () => {
+  const repo = fixture({ man: manifest({ toolchain: { node: '999', git: { version: '999', probe: 'git --version' } } }) });
+  const sha = feat(repo);
+  const o = path.join(ROOT, `o${++n}`);
+  const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
+  assert.equal(r.ok, false); assert.equal(r.code, 3); assert.equal(r.error.code, 'host-not-capable');
+  assert.match(r.error.message, /node: have \d+/); assert.match(r.error.message, /git: have \d+/);
+  assert.deepEqual(fs.existsSync(o) ? fs.readdirSync(o).filter((x) => x.startsWith('record.')) : [], []);
+  // and without --checkout, on a clean detached checkout
+  g(repo, 'checkout', '-q', '--detach', sha);
+  const r2 = ci(repo, ['run', '--out', o]);
+  assert.equal(r2.error.code, 'host-not-capable'); assert.equal(r2.code, 3);
+  assert.deepEqual(fs.existsSync(o) ? fs.readdirSync(o).filter((x) => x.startsWith('record.')) : [], []);
+});
+
+test('run --preflight probes only: exit 0 when capable, host-not-capable (no record, no checkout needed) when not', () => {
+  let repo = fixture();
+  let r = ci(repo, ['run', '--preflight']); // an attached checkout is fine for a preflight
+  assert.equal(r.code, 0, JSON.stringify(r)); assert.equal(r.result.preflight, true); assert.equal(r.result.capable, true); assert.equal(r.result.os, HOST);
+  repo = fixture({ man: manifest({ toolchain: { node: '999' } }) });
+  r = ci(repo, ['run', '--preflight']);
+  assert.equal(r.code, 3); assert.equal(r.error.code, 'host-not-capable');
+});
+
+test('toolchain_os is merged over toolchain for that OS only: run, preflight and verify', () => {
+  // run: this host's override makes it incapable; another OS's override is invisible to it
+  let repo = fixture({ man: anyManifest({ toolchain_os: { [HOST]: { node: '999' } } }) });
+  assert.equal(ci(repo, ['run', '--preflight']).error.code, 'host-not-capable');
+  repo = fixture({ man: anyManifest({ toolchain_os: { [OTHER]: { node: '999' } } }) });
+  const sha = feat(repo);
+  assert.equal(ci(repo, ['run', '--preflight']).code, 0);
+  publish(repo, sha);
+  assert.equal(ci(repo, ['verify', '--sha', sha]).code, 0);
+  // custom {version, probe} entries are probed and recorded
+  repo = fixture({ man: anyManifest({ toolchain_os: { [HOST]: { git: { version: '2', probe: 'git --version' } } } }) });
+  const sha2 = feat(repo);
+  const { rec: f } = publish(repo, sha2);
+  assert.match(JSON.parse(fs.readFileSync(f, 'utf8')).toolchain.probes.git, /^2\./);
+  assert.equal(ci(repo, ['verify', '--sha', sha2]).code, 0);
+
+  // verify: a simulated macos record is checked against toolchain + toolchain_os.macos
+  const man = anyManifest({ toolchain: { node: '999' }, toolchain_os: { macos: { node: '1' } } });
+  repo = fixture({ man }); const sha3 = feat(repo);
+  simulate(repo, sha3, 'macos', { probes: { node: '1.2.3' } });
+  assert.equal(ci(repo, ['verify', '--sha', sha3]).code, 0);
+  simulate(repo, sha3, 'linux', { probes: { node: '1.2.3' } });  // linux keeps the base pin 999: ignored, macos still carries the pass
+  const v = ci(repo, ['verify', '--sha', sha3]);
+  assert.equal(v.code, 0); assert.deepEqual(notes(v), ['toolchain-mismatch']);
 });
 
 test('path selection: skipped:path is agreed when the diff misses the paths, and rejected when it hits them', () => {
@@ -218,8 +387,7 @@ test('path selection: skipped:path is agreed when the diff misses the paths, and
   repo = fixture({ man });
   sha = branch(repo, 'feat', { 'docs/y.md': 'y\n' });
   const o = path.join(ROOT, `o${++n}`);
-  ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
-  const f = path.join(o, `record.${HOST}.json`);
+  const f = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]).result.record;
   const j = JSON.parse(fs.readFileSync(f, 'utf8')); assert.equal(j.suites[0].status, 'passed'); j.suites[0].status = 'skipped:path';
   fs.writeFileSync(f, JSON.stringify(j, null, 2));
   ci(repo, ['sign', f, '--key', KEY]); ci(repo, ['publish', f, '--no-push']);
@@ -230,7 +398,7 @@ test('path selection: skipped:path is agreed when the diff misses the paths, and
 test('if_exists: an absent guard file records skipped:absent; claiming it when the file exists fails', () => {
   const man = manifest({ suites: [{ id: 'cargo', run: [node('process.exit(1)')], required: true, os: 'any', if_exists: ['Cargo.toml'] }] });
   let repo = fixture({ man });
-  let sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  let sha = feat(repo);
   assert.deepEqual(ci(repo, ['run', '--checkout', '--sha', sha, '--out', path.join(ROOT, `o${++n}`)]).result.suites, [{ id: 'cargo', status: 'skipped:absent' }]);
   publish(repo, sha);
   assert.equal(ci(repo, ['verify', '--sha', sha]).code, 0);
@@ -238,29 +406,63 @@ test('if_exists: an absent guard file records skipped:absent; claiming it when t
   repo = fixture({ man });
   sha = branch(repo, 'feat', { 'Cargo.toml': '[package]\n' });
   const o = path.join(ROOT, `o${++n}`);
-  ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
-  const f = path.join(o, `record.${HOST}.json`);
+  const f = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]).result.record;
   const j = JSON.parse(fs.readFileSync(f, 'utf8')); j.suites[0].status = 'skipped:absent'; j.outcome = 'pass';
   fs.writeFileSync(f, JSON.stringify(j, null, 2));
   ci(repo, ['sign', f, '--key', KEY]); ci(repo, ['publish', f, '--no-push']);
   assert.deepEqual(reasons(ci(repo, ['verify', '--sha', sha])), ['skipped-absent-abuse']);
 });
 
-test('a suite that only skipped:os fails naming the needed host', () => {
-  const other = OTHER;
-  const repo = fixture({ man: manifest({ suites: [{ id: 'native', run: [node('process.exit(0)')], required: true, os: other }] }) });
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
-  publish(repo, sha);
-  const v = ci(repo, ['verify', '--sha', sha]);
-  assert.deepEqual(reasons(v), ['skipped-os']); assert.match(v.result.reasons[0].detail, new RegExp(`needs a ${other} host`));
+test('skipped:os is pending ("needs a <os> host") until a host the suite includes passes it; claiming it on an included OS is skipped-os-abuse', () => {
+  const man = anyManifest({ suites: [{ id: 'native', run: [node('process.exit(0)')], required: true, os: OTHER }] });
+  // the real host (not OTHER) honestly skips the suite
+  let repo = fixture({ man });
+  let sha = feat(repo);
+  assert.deepEqual(publish(repo, sha).run.result.suites, [{ id: 'native', status: 'skipped:os' }]);
+  let v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 2, JSON.stringify(v)); assert.equal(v.result.verdict, 'pending'); assert.deepEqual(v.result.waiting, [`native: needs a ${OTHER} host`]);
+  const s = ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body;
+  assert.equal(s.state, 'pending'); assert.equal(s.description, `native: needs a ${OTHER} host`);
+  // a record from a host the suite includes settles it
+  simulate(repo, sha, OTHER);
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 0, JSON.stringify(v));
+
+  // abuse: the OTHER-host record itself claims skipped:os on its own OS
+  repo = fixture({ man }); sha = feat(repo);
+  simulate(repo, sha, OTHER, { status: { native: 'skipped:os' } });
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['skipped-os-abuse']); assert.match(v.result.reasons[0].detail, new RegExp(`on a ${OTHER} record`));
+
+  // and an os:any suite can never be skipped:os anywhere
+  repo = fixture({ man: anyManifest() }); sha = feat(repo);
+  simulate(repo, sha, 'linux', { status: { unit: 'skipped:os' } });
+  assert.deepEqual(reasons(ci(repo, ['verify', '--sha', sha])), ['skipped-os-abuse']);
 });
 
-test('fail closed: a head that changes ci/suites.json fails manifest-changed unless approved', () => {
-  const repo = fixture();
-  const sha = branch(repo, 'feat', { 'ci/suites.json': manifest({ suites: [{ id: 'unit', run: [node('process.exit(0)')], required: false, os: 'any' }] }) });
+test('lint: in all-of mode a suite os outside os_required is refused (no host could run it); any-mode allows it', () => {
+  const bad = fixture({ man: manifest({ os_required: ['linux'], suites: [{ id: 'native', run: ['x'], required: true, os: 'windows' }] }) });
+  const c = ci(bad, ['check-manifest']);
+  assert.equal(c.code, 1); assert.match(c.result.findings.join('\n'), /ci\/suites\.json: suites\[0\] \(native\): os "windows" is not in os_required, so no host could run it/);
+  assert.equal(ci(fixture({ man: anyManifest({ suites: [{ id: 'native', run: ['x'], required: true, os: 'windows' }] }) }), ['check-manifest']).code, 0);
+  assert.equal(ci(fixture({ man: manifest({ os_required: ['linux', 'windows'], suites: [{ id: 'native', run: ['x'], required: true, os: 'windows' }] }) }), ['check-manifest']).code, 0);
+  const t = ci(fixture({ man: anyManifest({ toolchain_os: { beos: {}, linux: { nope: '1' } } }) }), ['check-manifest']);
+  assert.match(t.result.findings.join('\n'), /toolchain_os: unknown OS "beos"/); assert.match(t.result.findings.join('\n'), /toolchain_os\.linux\.nope: no built-in probe/);
+});
+
+test('fail closed: a head that changes ci/suites.json or ci/scripts/** fails manifest-changed unless approved', () => {
+  let repo = fixture();
+  let sha = branch(repo, 'feat', { 'ci/suites.json': manifest({ suites: [{ id: 'unit', run: [node('process.exit(0)')], required: false, os: 'any' }] }) });
   publish(repo, sha);
-  const v = ci(repo, ['verify', '--sha', sha]);
+  let v = ci(repo, ['verify', '--sha', sha]);
   assert.equal(v.code, 1); assert.ok(reasons(v).includes('manifest-changed')); assert.match(v.result.reasons[0].detail, /ci\/suites\.json/);
+  assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+
+  repo = fixture({ man: anyManifest() });
+  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n' });
+  simulate(repo, sha, 'linux');
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']); assert.match(v.result.reasons[0].detail, /ci\/scripts\/secret-scan\.mjs/);
   assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
 });
 
@@ -277,6 +479,7 @@ test('run refuses a dirty or non-detached checkout and an invalid manifest', () 
 test('check-manifest: a clean manifest passes; a missing os_required and a wildcard signer fail naming the file', () => {
   const repo = fixture();
   assert.equal(ci(repo, ['check-manifest']).code, 0);
+  assert.equal(ci(fixture({ man: anyManifest() }), ['check-manifest']).code, 0);
   fs.writeFileSync(path.join(repo, 'ci/suites.json'), JSON.stringify({ schema: 'ci-local/1', suites: [{ id: 'a', run: ['x'], required: true }] }));
   fs.writeFileSync(path.join(repo, '.standards/ci-local/allowed_signers.org'), `* namespaces="ci-result@hhay" ${pub(KEY)}\n`);
   const c = ci(repo, ['check-manifest']);
@@ -287,7 +490,7 @@ test('check-manifest: a clean manifest passes; a missing os_required and a wildc
 
 test('status --dry-run prints the exact request; a real POST sends it with the token; no token fails', async () => {
   const repo = fixture();
-  const sha = branch(repo, 'feat', { 'b.txt': 'b\n' });
+  const sha = feat(repo);
   publish(repo, sha);
   const tree = treeOf(repo, sha);
   const d = ci(repo, ['status', '--sha', sha, '--repo', 'acme/widgets', '--dry-run']);
@@ -295,7 +498,7 @@ test('status --dry-run prints the exact request; a real POST sends it with the t
   assert.deepEqual(d.result.request, {
     method: 'POST',
     url: `https://api.github.com/repos/acme/widgets/statuses/${sha}`,
-    headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer <GH_TOKEN>', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'ci-local/1.0.0' },
+    headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer <GH_TOKEN>', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': `ci-local/${VERSION}` },
     body: { state: 'success', context: 'builder-ci', description: 'signed records verified', target_url: `https://github.com/acme/widgets/tree/refs/ci/${tree}` },
   });
 
@@ -316,11 +519,31 @@ test('status --dry-run prints the exact request; a real POST sends it with the t
   } finally { srv.close(); }
 });
 
-test('envelope and exit codes: unknown verb is usage (64); the vendored VERSION matches check.json', () => {
+test('envelope and exit codes: unknown verb is usage (64); the vendored check.json lists the manifest command', () => {
   const repo = fixture();
   const r = ci(repo, ['bogus']);
   assert.equal(r.code, 64); assert.equal(r.ok, false); assert.equal(r.error.code, 'usage');
   const cj = JSON.parse(fs.readFileSync(path.join(DIR, '.standards/ci-local/check.json'), 'utf8'));
   assert.deepEqual(cj.commands, [{ id: 'manifest', tool: 'ci', run: ['node', '.standards/ci-local/ci.mjs', 'check-manifest'] }]);
-  if (!process.env.CI_LOCAL_SRC) assert.equal(cj.version, '1.0.0');
+});
+
+test('compat: a tree that vendors 1.0.1 still runs, signs, publishes and verifies with its own 1.0.1 ci.mjs', () => {
+  const repo = fixture({ ciSrc: CI_101 }); // os_required list form, the only form 1.0.1 knows
+  const sha = feat(repo);
+  const o = path.join(ROOT, `o${++n}`);
+  const r = ci(repo, ['run', '--checkout', '--sha', sha, '--out', o]);
+  assert.equal(r.code, 0, JSON.stringify(r));
+  assert.equal(path.basename(r.result.record), `record.${HOST}.json`); // 1.0.1 writes the legacy name
+  assert.equal(JSON.parse(fs.readFileSync(r.result.record, 'utf8')).ci_local_version, '1.0.0');
+  assert.equal(ci(repo, ['sign', r.result.record, '--key', KEY]).ok, true);
+  assert.equal(ci(repo, ['publish', r.result.record, '--no-push']).ok, true);
+  const v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 0, JSON.stringify(v)); assert.equal(v.result.verdict, 'pass');
+  assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.state, 'success');
+  // 1.1.0 reading the same ref ignores the 1.0.x record (version mismatch -> a re-run), it does not fail the PR
+  const forward = path.join(repo, '.standards/ci-local/ci.mjs');
+  fs.copyFileSync(CI_SRC, forward); g(repo, 'add', '-A'); g(repo, 'commit', '-q', '-m', 'resync');
+  const r2 = spawnSync(process.execPath, [forward, 'verify', '--sha', sha, '--default-branch', 'main', '--approved', '--json'], { cwd: repo, encoding: 'utf8', env });
+  const j = JSON.parse(r2.stdout);
+  assert.equal(r2.status, 2); assert.deepEqual(j.result.notes.map((x) => x.code), ['ci-version-mismatch']);
 });

@@ -5,6 +5,33 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.1.0
+
+Any-host records (spec `_design-ci/spec-builder-side-ci.v4.md` section 5, slice A1; owner 2026-11-14: one passing
+record from the building host's OS is enough, no dual-OS requirement). Additive: a tree that vendors 1.0.x keeps
+verifying with its own copy; a tree that re-syncs to 1.1.0 re-runs once (`ci-version-mismatch`: records carry
+`ci_local_version`, and `VERSION` now equals the profile version; 1.0.0/1.0.1 shipped `VERSION = '1.0.0'`).
+
+- Manifest: `os_required` also takes the string `"any"` (one passing record from any OS suffices; the list form
+  keeps its all-of meaning). It stays mandatory. `toolchain_os` (`{"windows": {...}}`) is merged over `toolchain`
+  for that OS before probing and before verifying. The lint refuses, in all-of mode, a suite `os` that is not in
+  `os_required`.
+- `run`: a host whose probes are missing or mismatched writes NO record and fails with error code
+  `host-not-capable` (exit 3, every gap listed); it used to write a red `toolchain-drift` record.
+  `run --preflight` runs only that probe step. Harnesses key on `error.code`, not the exit code.
+- Records are `record.<os>.<host-id>.json` (host-id = signer principal after `@`); a host re-running replaces only
+  its own file. The legacy `record.<os>.json` is still read.
+- `verify`: a record that fails any check (unsigned, bad or expired signature, wrong tree/OS/version, toolchain,
+  key) is ignored and listed under `notes`; it never grants a pass. Any-mode counts every verified record, all-of
+  mode the OSes in `os_required`; a usable record with outcome fail, or a failed required suite, is `fail`.
+  Pending (exit 2, never mergeable): no `refs/ci/<tree>` ("no record yet"), no usable record, a missing all-of OS, or
+  a required suite every usable record reports `skipped:os` ("needs a <os> host"). `skipped:os` on a record whose
+  OS the suite includes is `skipped-os-abuse` (fail). `ci/` joins the fail-closed path list with
+  `ci/suites.json`, `.standards/ci-local` and `.github`.
+- `publish` retries the ref push 5 times with jitter (was 2), since several hosts now push one ref.
+- Not in this version (spec 5.10 / owner 2026-11-14): `same_across_os` hashes, WSL enrolment, force-fetch before
+  verify (slice A3, harness side).
+
 ## 1.0.1
 
 - Enrolls the first harness signer in `allowed_signers.org`: `hermes@win1` (ed25519, namespace `ci-result@hhay`,
