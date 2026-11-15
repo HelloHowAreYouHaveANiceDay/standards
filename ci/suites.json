@@ -1,0 +1,11 @@
+{
+  "schema": "ci-local/1",
+  "os_required": "any",
+  "toolchain": { "node": "26", "go": "1.26" },
+  "suites": [
+    { "id": "append-only", "required": true, "os": "any", "timeout_min": 5, "run": ["node scripts/append-only.mjs origin/main"] },
+    { "id": "kit-sums", "required": true, "os": "any", "timeout_min": 10, "run": ["node --test tests/kit.test.mjs"] },
+    { "id": "unit", "required": true, "os": "any", "timeout_min": 30, "run": ["npm ci", "npm test"] },
+    { "id": "fixture-sync", "required": true, "os": "any", "timeout_min": 30, "run": ["node tests/fixture-sync.mjs --out synced.txt"] }
+  ]
+}
