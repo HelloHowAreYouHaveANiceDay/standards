@@ -32,6 +32,9 @@ name `deploy` in `runs-on`; without it, only the literal-fallback half of L1 app
 | K1 | MUST | `actions/setup-go` sets `cache: false`; no `actions/cache` for Go, uv, NuGet or cargo directories |
 | S4 | MUST | No `ubuntu-latest` literal or fallback in `runs-on` or a matrix (public repos: allow comment) |
 | N1 | SHOULD | `actions/setup-node` takes `node-version-file` (`.nvmrc`), not a literal `node-version` (expressions such as a matrix value are fine) |
+| P1 | MUST | Python runs through uv. No `actions/setup-python` (any ref); no `shell: python`; in `run:` no command-position `python`, `python3`, `python3.N`, `py`, `pip`, `pip3`, `pipx`, `poetry`, `virtualenv`; no fetch of `astral.sh/uv/install`. Command position = line start or after `;` `&&` `\|\|` `\|` `(` `$(` `then` `do` `else` `exec` `time` `sudo` `env [VAR=x ...]`. Only bare names count: a path (`"$VENV/bin/python"`, `.venv\Scripts\python`) is allowed, as is anything after `uv run` / `uv pip` / `uvx`. Heredoc bodies and quoted strings are skipped |
+| P2 | MUST | Every `astral-sh/setup-uv` step sets `enable-cache: false` and pins uv: `version:` exact `X.Y.Z` or `version-file:` |
+| P3 | SHOULD | In a repo with a root `uv.lock`, `uv sync` / `uv run` (not `--no-project`, not `--script`) passes `--locked` or `--frozen`, or `UV_LOCKED` / `UV_FROZEN` is set in step, job or workflow `env` |
 | O3 | SHOULD | Every `workflow_run.workflows` entry matches a workflow `name:` (or file path) in `.github/workflows` |
 
 What counts as "runs on main": the workflow has a `push` trigger that is not tag-only and not branch-filtered away
@@ -43,6 +46,15 @@ block, `ui` off), S6 (Dependabot `github-actions`, grouped, quarterly, `cooldown
 `github.actor != 'dependabot[bot]'`), and A1/S1-S3 which gha-base's actionlint and zizmor cover.
 
 ## Guidance (review, no ids)
+- **Python hosts (P1-P3).** No host Python is required or relied on: uv downloads a standalone CPython per user, with
+  no elevation and no PATH dependency. Scripts: `uv run --no-project --python 3.12 python x.py` (heredoc:
+  `... python - <<'EOF'`; extra packages `--with pkg==X`; a requirements file `--with-requirements f`). Projects:
+  `uv sync --locked` / `uv run --locked`. uv's default per-user cache (`~/.cache/uv`, `%LOCALAPPDATA%\uv\cache`) and
+  managed Pythons persist across jobs on a persistent runner and uv locks its cache, so concurrent jobs are safe: never
+  set `UV_CACHE_DIR` under `$GITHUB_WORKSPACE` or `$RUNNER_TEMP`, and keep `enable-cache: false` (the setup-uv cache
+  would archive the shared cache). Set `UV_PYTHON_PREFERENCE: only-managed` at workflow level so a stray host Python is
+  never picked up. Third-party actions are hash-pinned under gha-base's zizmor policy, so pin setup-uv by commit sha.
+  Growth: the weekly runner prune runs `uv cache prune` per runner user.
 - **Push on the default branch only.** `on: push: branches: [main]`; PRs run the full suite, main runs build + unit +
   deploy + live verify.
 - **Cron hygiene.** One cron per job that needs it, off the hour (`17 4 * * *`), no cron on a workflow that PRs also
@@ -72,7 +84,7 @@ block, `ui` off), S6 (Dependabot `github-actions`, grouped, quarterly, `cooldown
 | Go | `test` (vet + test), `standards`, `ci-ok`; release by tag |
 | TS/Astro + Workers | `build` (install, typecheck, lint, unit, build) / `browser` (PR) / `deploy-preview` (PR) / `deploy` (main) / `ci-ok` |
 | React + Firebase | `changes` -> `unit` / `emulators` (PR) / `e2e` (PR) -> `deploy-*` -> `ci-ok` |
-| Python/uv | `lint` (ruff) / `test` / `ci-ok` |
+| Python/uv | `lint` (ruff) / `test` / `ci-ok`; every job starts with `astral-sh/setup-uv` (hash-pinned, `enable-cache: false`, pinned uv), then `uv sync --locked` / `uv run` |
 | .NET + Revit | `build` (Windows) -> `revit-live` (Revit runner, PR only) -> `ci-ok` |
 | Rust | `check` (fmt, clippy, test) / `ci-ok` |
 

@@ -4,7 +4,7 @@
 //   node .standards/ci-base/wf.mjs [.github/workflows]
 //
 // Offline, no network, no credentials; the only dependency is the vendored single-file YAML parser.
-// Rules: C1 C2 G1 G2 G6 L1 D2 K1 S4 (MUST -> FAIL) and O3, N1 (SHOULD -> WARN); see RULES.md.
+// Rules: C1 C2 G1 G2 G6 L1 D2 K1 S4 P1 P2 (MUST -> FAIL) and O3, N1, P3 (SHOULD -> WARN); see RULES.md.
 // Every finding prints `standards: FAIL|WARN [ci-base/wf] <file>:<line>: <message> (<id>)`; exit 1 only on a FAIL.
 // Suppress one finding with `# standards-allow <ID>: <reason>` on the offending line, on the first line of the
 // job, on the comment line directly above either, or in the file's leading comment block. A reasonless allow FAILS.
@@ -13,8 +13,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseDocument, LineCounter, isMap } from './vendor/yaml.mjs';
 
-export const MUST = new Set(['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'allow', 'parse']);
-export const RULE_IDS = ['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'O3', 'N1'];
+export const MUST = new Set(['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'P1', 'P2', 'allow', 'parse']);
+export const RULE_IDS = ['C1', 'C2', 'G1', 'G2', 'G6', 'L1', 'D2', 'K1', 'S4', 'P1', 'P2', 'O3', 'N1', 'P3'];
 
 const VERIFY_IF = /always\(\)|!cancelled\(\)|steps\.[\w-]+\.outcome\s*==\s*'failure'/;
 const DEPLOY_RE = /\bwrangler(?:@[^\s]+)?\s+(?:pages\s+)?(?:deploy|publish)\b|\bfirebase(?:-tools)?(?:@[^\s]+)?\s+deploy\b|FirebaseExtended\/action-hosting-deploy|cloudflare\/(?:wrangler|pages)-action/i;
@@ -58,10 +58,34 @@ export const pushOnly = (job) => { const c = str(job.if); return c !== '' && has
 const tolerant = (job) => { const c = str(job.if); return /!cancelled\(\)/.test(c) && /failure/.test(c); };
 
 const stepText = (s) => [s.name, s.uses, s.run, s.with ? JSON.stringify(s.with) : ''].map(str).join('\n');
+// ---- shell scanning for P1/P3 (nothing is executed; a best-effort scan of `run:` text) ----
+// One token list per simple command: heredoc bodies skipped, backslash continuations joined, quoted strings and
+// ${{ }} expressions blanked, split at ; && || | ( ) ` &, leading keywords / VAR=x / env / sudo dropped.
+const LEAD_KW = /^(then|do|else|elif|if|while|until|!|exec|time|sudo|command|nohup|env|\{)$/;
+export function shellCommands(run) {
+  const out = [];
+  let hd = null;
+  for (const l of str(run).replace(/\\\r?\n/g, ' ').split(/\r?\n/)) {
+    if (hd !== null) { if (l.trim() === hd) hd = null; continue; }
+    const m = /<<(?!<)-?\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_]\w*))/.exec(l);
+    if (m) hd = m[1] || m[2] || m[3];
+    const s = l.replace(/\$\{\{.*?\}\}/g, 'X').replace(/'[^']*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/(^|\s)#.*$/, '$1');
+    for (const seg of s.split(/;|&&|\|\||\||\(|\)|`|&(?!>)/)) {
+      const t = seg.trim().split(/\s+/).filter(Boolean);
+      let prev = '';
+      while (t.length && (LEAD_KW.test(t[0]) || /^[A-Za-z_]\w*=\S*$/.test(t[0]) || (/^(env|sudo|time|command)$/.test(prev) && t[0].startsWith('-')))) prev = t.shift();
+      if (t.length) out.push(t);
+    }
+  }
+  return out;
+}
+const P1_BARE = /^(python(3(\.\d+)?)?|py|pip3?|pipx|poetry|virtualenv)$/;
+const envTruthy = (env, k) => isObj(env) && env[k] !== undefined && !/^(|0|false)$/i.test(str(env[k]).trim());
+
 const truthy = (v) => v === true || (typeof v === 'string' && v.trim() !== '' && v.trim() !== 'false');
 
 // Lint one workflow. ctx = { names: Set of every workflow name/path in the directory, lane: repo declares a `deploy` lane }.
-export function lintWorkflow(text, file, ctx = { names: new Set(), lane: false }) {
+export function lintWorkflow(text, file, ctx = { names: new Set(), lane: false, uvLock: false }) {
   const found = [];
   const lc = new LineCounter();
   const doc = parseDocument(text, { lineCounter: lc, uniqueKeys: false });
@@ -205,6 +229,31 @@ export function lintWorkflow(text, file, ctx = { names: new Set(), lane: false }
     // K1 caches on persistent runners
     steps.forEach((s, i) => {
       const u = str(s.uses);
+      // P1 Python runs through uv: no setup-python, no host python/pip in run steps, no uv installer fetch
+      if (/^actions\/setup-python(@|$)/.test(u)) find('P1', stepLine(i), 'actions/setup-python is banned (its Windows installer hangs without elevation); use astral-sh/setup-uv and `uv run`', line);
+      if (/^python/i.test(str(s.shell)) || /^python/i.test(str(job.defaults && job.defaults.run && job.defaults.run.shell))) find('P1', stepLine(i), "`shell: python` is banned; use `uv run --no-project python - <<'EOF'`", line);
+      if (s.run !== undefined) {
+        if (/astral\.sh\/uv\/install/.test(str(s.run))) find('P1', stepLine(i), 'do not fetch the uv installer; use astral-sh/setup-uv', line);
+        for (const t of shellCommands(s.run)) {
+          if (P1_BARE.test(t[0])) { find('P1', stepLine(i), `bare \`${t[0]}\` in a run step; use \`uv run\` / \`uvx\` (host Python is not provisioned)`, line); break; }
+        }
+        // P3 (SHOULD): uv sync / uv run in a repo with a root uv.lock must pass --locked or --frozen
+        const lockedEnv = ['UV_LOCKED', 'UV_FROZEN'].some((k) => envTruthy(s.env, k) || envTruthy(job.env, k) || envTruthy(wf.env, k));
+        if (ctx.uvLock && !lockedEnv) {
+          for (const t of shellCommands(s.run)) {
+            if (t[0] !== 'uv' || !['sync', 'run'].includes(t[1])) continue;
+            if (t.some((x) => ['--locked', '--frozen', '--no-project', '--script'].includes(x))) continue;
+            find('P3', stepLine(i), `\`uv ${t[1]}\` in a repo with uv.lock should pass --locked (or --frozen), or set UV_LOCKED`, line);
+            break;
+          }
+        }
+      }
+      // P2 setup-uv: cache off, uv version pinned
+      if (/^astral-sh\/setup-uv(@|$)/.test(u)) {
+        const w = isObj(s.with) ? s.with : {};
+        if (!(w['enable-cache'] === false || str(w['enable-cache']) === 'false')) find('P2', stepLine(i), 'astral-sh/setup-uv must set `enable-cache: false` (shared persistent runners; uv keeps its own per-user cache)', line);
+        if (!(/^\d+\.\d+\.\d+$/.test(str(w.version).trim()) || str(w['version-file']).trim() !== '')) find('P2', stepLine(i), 'astral-sh/setup-uv must pin uv: `version: "X.Y.Z"` (exact) or `version-file:`', line);
+      }
       if (/^actions\/setup-go@/.test(u) && !(s.with && (s.with.cache === false || str(s.with.cache) === 'false'))) {
         find('K1', stepLine(i), 'actions/setup-go must set `cache: false` (cache-save hangs on persistent runners)', line);
       }
@@ -296,7 +345,7 @@ export function lintDir(dir, cwd = process.cwd()) {
   const rel = (p) => path.relative(cwd, p).split(path.sep).join('/');
   const files = fs.readdirSync(abs).filter((f) => /\.ya?ml$/i.test(f)).sort().map((f) => ({ rel: rel(path.join(abs, f)), text: fs.readFileSync(path.join(abs, f), 'utf8') }));
   const root = path.resolve(abs, '..', '..');
-  const ctx = { names: workflowNames(files), lane: laneDeclared(root) };
+  const ctx = { names: workflowNames(files), lane: laneDeclared(root), uvLock: fs.existsSync(path.join(root, 'uv.lock')) };
   const findings = [];
   for (const f of files) findings.push(...lintWorkflow(f.text, f.rel, ctx).sort((a, b) => a.line - b.line));
   return { findings, files: files.length };
