@@ -1,4 +1,4 @@
-// ci-local 1.1.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
+// ci-local 1.1.1: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
 // ed25519 key. Every failure mode asserts a NAMED reason. ssh-keygen -Y and git are real; nothing touches GitHub
 // (status POSTs go to a local http server). os_required "any" and the all-of list are also covered on SIMULATED
 // linux / macos / windows records (signed with the fixture key), because CI runs on one host OS at a time.
@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.1.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.1.1');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -546,4 +546,55 @@ test('compat: a tree that vendors 1.0.1 still runs, signs, publishes and verifie
   const r2 = spawnSync(process.execPath, [forward, 'verify', '--sha', sha, '--default-branch', 'main', '--approved', '--json'], { cwd: repo, encoding: 'utf8', env });
   const j = JSON.parse(r2.stdout);
   assert.equal(r2.status, 2); assert.deepEqual(j.result.notes.map((x) => x.code), ['ci-version-mismatch']);
+});
+
+test('pins are minimums: dotted-number >=, missing parts 0; exact opts one pin into equal-or-dot-extension', async () => {
+  const { versionMatches } = await import(pathToFileURL(CI_SRC).href);
+  for (const [pin, have] of [['1.99', '1.100.0'], ['1.99', '1.99'], ['1.99', '1.99.4'], ['22', '26.1.0'], ['1.23', '1.26.2'], ['1.2', '1.2.0'], ['v1.2', 'v1.10']]) assert.equal(versionMatches(pin, have), true, `${pin} <= ${have}`);
+  for (const [pin, have] of [['1.100', '1.99.9'], ['26', '22.3.0'], ['1.2.1', '1.2'], ['2', null]]) assert.equal(versionMatches(pin, have), false, `${pin} > ${have}`);
+  assert.equal(versionMatches({ version: '1.99', exact: true }, '1.100'), false);
+  assert.equal(versionMatches({ version: '1.99', exact: true }, '1.99.2'), true);
+  assert.equal(versionMatches({ version: '1.99', exact: false }, '1.100'), true);
+  assert.equal(versionMatches('stable', 'stable'), true); assert.equal(versionMatches('stable', '1.2'), false);
+});
+
+test('run: a host newer than the pin is capable and the record stores the ACTUAL version; an exact pin it does not equal is host-not-capable', () => {
+  const major = Number(process.versions.node.split('.')[0]);
+  const repo = fixture({ man: manifest({ toolchain: { node: String(major - 1) } }) });
+  const sha = feat(repo);
+  assert.equal(ci(repo, ['run', '--preflight']).code, 0);
+  const { rec: f } = publish(repo, sha);
+  assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).toolchain.probes.node, process.versions.node);
+  assert.equal(ci(repo, ['verify', '--sha', sha]).code, 0);
+  const ex = fixture({ man: manifest({ toolchain: { node: { version: String(major - 1), exact: true } } }) });
+  const r = ci(ex, ['run', '--preflight']);
+  assert.equal(r.code, 3); assert.equal(r.error.code, 'host-not-capable'); assert.match(r.error.message, /node: have .*exact pin/);
+  assert.equal(ci(fixture({ man: manifest({ toolchain: { node: { version: String(major), exact: true } } }) }), ['run', '--preflight']).code, 0);
+});
+
+test('verify: a record whose probe is above the pin passes (1.100 vs 1.99); an exact pin ignores it as toolchain-mismatch; lint takes exact', () => {
+  const tc = { rustc: { version: '1.99', probe: 'git --version' } };
+  let repo = fixture({ man: anyManifest({ toolchain: tc }) }); let sha = feat(repo);
+  simulate(repo, sha, 'linux', { probes: { rustc: '1.100.0' } });
+  assert.equal(ci(repo, ['verify', '--sha', sha]).code, 0);
+  repo = fixture({ man: anyManifest({ toolchain: { rustc: { ...tc.rustc, exact: true } } }) }); sha = feat(repo);
+  simulate(repo, sha, 'linux', { probes: { rustc: '1.100.0' } });
+  const v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['toolchain-mismatch']);
+  assert.equal(ci(fixture({ man: anyManifest({ toolchain: { node: { version: '1', exact: 'yes' } } }) }), ['check-manifest']).code, 1);
+  assert.equal(ci(fixture({ man: anyManifest({ toolchain: { node: { version: '1', exact: true } } }) }), ['check-manifest']).code, 0);
+});
+
+test('no manifest: run reports error.code no-manifest; verify of a tree without ci/suites.json is PENDING (exit 2, "no-manifest: ..."), not red', () => {
+  const repo = fixture();
+  g(repo, 'checkout', '-q', '-b', 'old', 'main'); g(repo, 'rm', '-q', 'ci/suites.json'); g(repo, 'commit', '-q', '-m', 'no manifest');
+  const sha = g(repo, 'rev-parse', 'HEAD'); g(repo, 'checkout', '-q', 'main');
+  const v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 2, JSON.stringify(v)); assert.equal(v.result.verdict, 'pending'); assert.deepEqual(reasons(v), []);
+  assert.match(v.result.waiting[0], /^no-manifest: ci\/suites\.json not at /);
+  const st = ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']);
+  assert.match(JSON.stringify(st), /"state":\s*"pending"/); assert.match(JSON.stringify(st), /no-manifest/);
+  g(repo, 'checkout', '-q', '--detach', sha);
+  const r = ci(repo, ['run']);
+  assert.equal(r.code, 1); assert.equal(r.error.code, 'no-manifest');
 });
