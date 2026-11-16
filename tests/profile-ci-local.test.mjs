@@ -1,4 +1,4 @@
-// ci-local 1.1.1: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
+// ci-local 1.2.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
 // ed25519 key. Every failure mode asserts a NAMED reason. ssh-keygen -Y and git are real; nothing touches GitHub
 // (status POSTs go to a local http server). os_required "any" and the all-of list are also covered on SIMULATED
 // linux / macos / windows records (signed with the fixture key), because CI runs on one host OS at a time.
@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.1.1');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.2.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -597,4 +597,53 @@ test('no manifest: run reports error.code no-manifest; verify of a tree without 
   g(repo, 'checkout', '-q', '--detach', sha);
   const r = ci(repo, ['run']);
   assert.equal(r.code, 1); assert.equal(r.error.code, 'no-manifest');
+});
+
+// ---- 1.2.0: stack templates + `ci init` ----
+const STACKS = ['dotnet', 'node', 'python-uv', 'rust', 'static-site'];
+function initRepo() {
+  const repo = path.join(ROOT, `init${++n}`);
+  fs.mkdirSync(path.join(repo, '.standards'), { recursive: true });
+  fs.cpSync(path.join(DIR, '.standards/ci-local'), path.join(repo, '.standards/ci-local'), { recursive: true });
+  sh('git', ['init', '-q', '-b', 'main'], repo);
+  return repo;
+}
+
+test('init: every shipped stack template passes check-manifest, is os_required any with os-any suites and the secret-scan suite', () => {
+  const dir = path.join(DIR, '.standards/ci-local/templates');
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort(), STACKS);
+  for (const s of STACKS) {
+    const repo = initRepo();
+    const r = ci(repo, ['init', '--stack', s]);
+    assert.equal(r.code, 0, `${s}: ${JSON.stringify(r)}`);
+    assert.deepEqual(r.result.written, ['ci/suites.json', 'ci/scripts/secret-scan.mjs']);
+    const m = JSON.parse(fs.readFileSync(path.join(repo, 'ci/suites.json'), 'utf8'));
+    assert.equal(m.os_required, 'any');
+    assert.ok(m.suites.every((x) => x.os === 'any' && x.required === true), s);
+    assert.ok(m.suites.some((x) => x.id === 'secret-scan' && x.run[0] === 'node ci/scripts/secret-scan.mjs'), s);
+    assert.equal(ci(repo, ['check-manifest']).code, 0, `${s}: ${JSON.stringify(ci(repo, ['check-manifest']))}`);
+    if (s === 'rust') assert.equal(m.toolchain_os.windows.gcc.probe, 'gcc --version');
+  }
+});
+
+test('init: refuses an existing manifest without --force, unknown/missing stack is usage, secret-scan finds shapes and never prints them', () => {
+  const repo = initRepo();
+  assert.equal(ci(repo, ['init', '--stack', 'node']).code, 0);
+  const again = ci(repo, ['init', '--stack', 'rust']);
+  assert.equal(again.code, 1); assert.equal(again.error.code, 'exists');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, 'ci/suites.json'), 'utf8')).toolchain.node, '20');
+  assert.equal(ci(repo, ['init', '--stack', 'rust', '--force']).code, 0);
+  assert.equal(ci(repo, ['init', '--stack', 'cobol', '--force']).code, 64);
+  assert.equal(ci(repo, ['init']).code, 64);
+  // the scanner: clean tree passes; a planted token fails naming file:line + rule only
+  const scan = () => spawnSync(process.execPath, ['ci/scripts/secret-scan.mjs'], { cwd: repo, encoding: 'utf8' });
+  g(repo, 'add', '-A');
+  assert.equal(scan().status, 0, scan().stdout);
+  const tok = `ghp_${'a1B2c3D4e5'.repeat(4)}`;
+  fs.writeFileSync(path.join(repo, 'cfg.txt'), `ok\ntoken = ${tok}\n`);
+  g(repo, 'add', '-A');
+  const bad = scan();
+  assert.equal(bad.status, 1); assert.match(bad.stdout, /cfg\.txt:2: github-token/); assert.ok(!bad.stdout.includes(tok));
+  fs.writeFileSync(path.join(repo, 'cfg.txt'), `token = ${tok} # secret-scan:allow\n`);
+  assert.equal(scan().status, 0);
 });

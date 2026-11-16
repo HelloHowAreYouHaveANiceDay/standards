@@ -1,0 +1,13 @@
+{
+  "schema": "ci-local/1",
+  "os_required": "any",
+  "toolchain": { "cargo": "1.80", "rustc": "1.80" },
+  "toolchain_os": { "windows": { "gcc": { "version": "1", "probe": "gcc --version" } } },
+  "setup": [],
+  "suites": [
+    { "id": "fmt", "run": ["cargo fmt --all -- --check"], "required": true, "os": "any", "timeout_min": 5 },
+    { "id": "clippy", "run": ["cargo clippy --workspace --all-targets --locked -- -D warnings"], "required": true, "os": "any", "timeout_min": 30 },
+    { "id": "test", "run": ["cargo test --workspace --locked"], "required": true, "os": "any", "timeout_min": 40 },
+    { "id": "secret-scan", "run": ["node ci/scripts/secret-scan.mjs"], "required": true, "os": "any", "timeout_min": 5 }
+  ]
+}

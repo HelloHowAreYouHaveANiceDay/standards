@@ -5,6 +5,21 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.2.0
+
+Stack templates and `ci init` (spec `_design-ci/spec-builder-side-ci.v5.md` 4.1, slice R1; owner go 2026-11-16). Additive:
+the manifest schema is unchanged. `VERSION` is 1.2.0, so a tree that re-syncs re-runs once (`ci-version-mismatch`).
+
+- `.standards/ci-local/templates/<stack>.json` for node, rust, python-uv, dotnet, static-site. All `os_required: "any"`,
+  every suite `os: "any"`, plus a `secret-scan` suite (`node ci/scripts/secret-scan.mjs`). rust pins cargo/rustc 1.80 and
+  `toolchain_os.windows.gcc`; lint / link-check suites use `npm run <x> --if-present` so a repo without the script passes.
+- `templates/secret-scan.mjs`: zero-dep scan of git-tracked files for credential shapes; prints `file:line: rule`, never
+  the match; `secret-scan:allow` on a line exempts it.
+- New verb `ci init --stack <s> [--force]`: copies the template to `ci/suites.json` and the scanner to
+  `ci/scripts/secret-scan.mjs`. Refuses an existing `ci/suites.json` (`exists`) without `--force`. Edit the pins and
+  suites afterwards; `ci/` is on the fail-closed path list, so the first PR needs the manifest label.
+- `allowed_signers.org` unchanged (byte-identical to 1.1.1).
+
 ## 1.1.1
 
 Pins are minimums; a tree with no manifest is pending (spec `_design-ci/spec-builder-side-ci.v5.md`, slice A4; owner
