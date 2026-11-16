@@ -37,6 +37,7 @@ Profiles (pick `base` plus at most one per language; each profile's rules: `.sta
 | `astro-ts` | Astro + TS | pins, `astro check`, ESLint + eslint-plugin-astro, Prettier (+ astro plugin) |
 | `python-base` | Python (uv projects) | uv rules U1-U4 (uv.lock, no other lock or requirements format, `.python-version`, pinned `required-version`) + Ruff check + Ruff format (sha256-pinned binary, the gate needs no Python) |
 | `rust-base` | Rust | `cargo fmt --check`, clippy `-D warnings` (pinned toolchain) |
+| `rust-unsafe` | Rust (unsafe) | fail-closed `unsafe_code` allowlist, SAFETY lints, Miri job, Google unsafe review rubric (next to rust-base) |
 | `dotnet-base` / `dotnet-addin` | C# / .NET (addin: net48 Revit/Rhino relaxations, used with base) | `dotnet format whitespace`, build with SDK analyzers as errors |
 | `c-base` | own C/C++ | clang-format (sha256-pinned wheel), vendored code via `.clang-format-ignore` |
 | `ruby-base` | Ruby (SketchUp extensions) | RuboCop + rubocop-sketchup, reasoned disables |

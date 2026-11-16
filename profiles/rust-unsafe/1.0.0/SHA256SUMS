@@ -1,0 +1,5 @@
+58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd  .standards/rust-unsafe/LICENSE-unsafe_rust_review.md
+9cebcafa11752dcefb454736c3e10e6e62f0d007793e7491b59f6fa5a615d179  .standards/rust-unsafe/RULES.md
+c409eecafae0aa766b2744778ac506469f34b43e066a715bded41870e26cf858  .standards/rust-unsafe/check.json
+89e10b4fc2109b8e95ed60d08adb134f258ee0de41845f7f18b8739a04c9c726  .standards/rust-unsafe/unsafe.mjs
+27e8df5bc9bc6f43e11747e67e695bf8ee8c4f59d6412270784d72382a4d3026  .standards/rust-unsafe/unsafe_rust_review.md
