@@ -1,0 +1,11 @@
+{
+  "profile": "stripe",
+  "version": "0.0.0",
+  "commands": [
+    {
+      "id": "stripe-lint",
+      "tool": "lint",
+      "run": ["node", ".standards/stripe/lint.mjs"]
+    }
+  ]
+}
