@@ -8,7 +8,8 @@ rust-base's toolchain, partitioning the workspace so each member is linted exact
 - Run A, packages NOT in the allowlist: `cargo clippy --locked --workspace --exclude <allowlisted> --all-targets
   --all-features -- -A warnings -F unsafe_code <six lints>`
 - Run B, allowlisted packages: `cargo clippy --locked -p <allowlisted> ... -- -A warnings <six lints>`
-A run with no packages is skipped. `-A warnings` comes first so rust-base's findings are not reported twice; the named
+Both runs pass `--no-deps` before `--`, so a selected package's path dependencies are not linted with that run's flags
+(since 1.0.1). A run with no packages is skipped. `-A warnings` comes first so rust-base's findings are not reported twice; the named
 lints still fail after it. `-F` (forbid), not `-D`: with `-D`, `#[expect(unsafe_code, reason)]` would silently bypass the
 allowlist; with `-F` it is E0453.
 

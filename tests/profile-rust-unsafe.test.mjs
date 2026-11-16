@@ -5,14 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { KIT_ROOT, sha256 } from './helpers.mjs';
 
-const dir = path.join(KIT_ROOT, 'profiles', 'rust-unsafe', '1.0.0');
+const dir = path.join(KIT_ROOT, 'profiles', 'rust-unsafe', '1.0.1');
 const std = path.join(dir, '.standards', 'rust-unsafe');
 const frag = JSON.parse(fs.readFileSync(path.join(std, 'check.json'), 'utf8'));
 const src = fs.readFileSync(path.join(std, 'unsafe.mjs'), 'utf8');
 
-test('rust-unsafe 1.0.0: one gate command, dated nightly pin', () => {
+test('rust-unsafe 1.0.1: one gate command, dated nightly pin', () => {
   assert.equal(frag.profile, 'rust-unsafe');
-  assert.equal(frag.version, '1.0.0');
+  assert.equal(frag.version, '1.0.1');
   assert.match(frag.tools.nightly, /^nightly-\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(frag.commands.map((c) => [c.id, c.run]), [['unsafe', ['node', '.standards/rust-unsafe/unsafe.mjs', 'check']]]);
 });
@@ -35,6 +35,12 @@ test('rust-unsafe: the six D1 lints and -F unsafe_code (not -D) are in the check
   assert.match(src, /'-F', 'unsafe_code'/);
   assert.doesNotMatch(src, /'-D', 'unsafe_code'/);
   assert.match(src, /'-A', 'warnings'/);
+});
+
+test('rust-unsafe: --no-deps precedes `--` in the shared clippy args (both run A and run B)', () => {
+  assert.match(src, /'--no-deps', '--',/);
+  assert.equal((src.match(/function clippyArgs/g) || []).length, 1);
+  assert.equal((src.match(/clippyArgs\(pkgArgs/g) || []).length >= 2, true);
 });
 
 test('rust-unsafe: zero-dependency, shell-free, no toolchain installer for the stable pin (reuses rust-base)', () => {

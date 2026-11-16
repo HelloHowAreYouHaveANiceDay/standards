@@ -95,7 +95,9 @@ function reportDiagnostics(out, classify, seen) {
 function clippyArgs(pkgArgs, unsafeCodeForbidden) {
   return [
     'clippy', '--locked', '--all-targets', '--all-features', '--message-format=json', ...pkgArgs,
-    '--', '-A', 'warnings',
+    // --no-deps: lint only the selected packages. Without it clippy-driver also lints path-dependency workspace
+    // members that were not selected, with THIS run's flags (an allowlisted dependency's unsafe fails run A).
+    '--no-deps', '--', '-A', 'warnings',
     ...(unsafeCodeForbidden ? ['-F', 'unsafe_code'] : []),
     ...D1_LINTS.flatMap((l) => ['-D', l]),
   ];
