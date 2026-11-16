@@ -1,0 +1,12 @@
+{
+  "schema": "ci-local/1",
+  "os_required": "any",
+  "toolchain": { "node": "20", "npm": "10" },
+  "setup": [],
+  "suites": [
+    { "id": "install", "run": ["npm ci"], "required": true, "os": "any", "timeout_min": 15 },
+    { "id": "test", "run": ["npm test"], "required": true, "os": "any", "timeout_min": 30 },
+    { "id": "lint", "run": ["npm run lint --if-present"], "required": true, "os": "any", "timeout_min": 10 },
+    { "id": "secret-scan", "run": ["node ci/scripts/secret-scan.mjs"], "required": true, "os": "any", "timeout_min": 5 }
+  ]
+}

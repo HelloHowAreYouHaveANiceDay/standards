@@ -10,6 +10,7 @@
 //   verify          the mechanical check: signatures, tree, toolchain, suites, os_required ("any" or an all-of list)
 //   status          verify, then POST commit status `builder-ci` (the only poster; --dry-run prints the request)
 //   check-manifest  lint ci/suites.json and the allowed-signers file
+//   init --stack S  copy templates/S.json (node|rust|python-uv|dotnet|static-site) to ci/suites.json (+ ci/scripts/secret-scan.mjs)
 //
 // Envelope with --json: {ok:true,result} | {ok:false,error:{code,message}}.
 // Exit: 0 ok/pass, 1 fail (verify/run red, lint findings), 2 pending (verify: no usable record, a required OS record or
@@ -23,7 +24,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.1.1';
+export const VERSION = '1.2.0';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -217,7 +218,7 @@ function parseArgs(argv) {
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       const k = (eq > 0 ? a.slice(2, eq) : a.slice(2));
-      if (['json', 'dry-run', 'approved', 'checkout', 'no-push', 'preflight', 'help'].includes(k)) o[k] = true;
+      if (['json', 'dry-run', 'approved', 'checkout', 'no-push', 'preflight', 'force', 'help'].includes(k)) o[k] = true;
       else if (eq > 0) o[k] = a.slice(eq + 1);
       else if (i + 1 < argv.length) o[k] = argv[++i];
       else throw usage(`--${k} needs a value`);
@@ -564,8 +565,26 @@ function cmdCheckManifest(o) {
   return { exit: findings.length ? 1 : 0, result: { findings } };
 }
 
+// ---------- init ----------
+// Copies templates/<stack>.json to ci/suites.json and templates/secret-scan.mjs to ci/scripts/secret-scan.mjs.
+const TEMPLATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'templates');
+const stacks = () => (fs.existsSync(TEMPLATE_DIR) ? fs.readdirSync(TEMPLATE_DIR).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort() : []);
+function cmdInit(o) {
+  const cwd = repoRoot(o);
+  const list = stacks();
+  if (typeof o.stack !== 'string') throw usage(`init needs --stack ${list.join('|')}`);
+  if (!list.includes(o.stack)) throw usage(`unknown stack "${o.stack}" (have ${list.join(', ')})`);
+  const dest = path.join(cwd, MANIFEST_PATH);
+  if (fs.existsSync(dest) && !o.force) throw new CiError('exists', `${MANIFEST_PATH} already exists (--force to overwrite)`, 1);
+  const scan = path.join(cwd, 'ci/scripts/secret-scan.mjs');
+  fs.mkdirSync(path.dirname(scan), { recursive: true });
+  fs.copyFileSync(path.join(TEMPLATE_DIR, `${o.stack}.json`), dest);
+  fs.copyFileSync(path.join(TEMPLATE_DIR, 'secret-scan.mjs'), scan);
+  return { exit: 0, result: { stack: o.stack, written: [MANIFEST_PATH, 'ci/scripts/secret-scan.mjs'] } };
+}
+
 // ---------- main ----------
-const VERBS = { run: cmdRun, sign: cmdSign, publish: cmdPublish, verify: cmdVerify, status: cmdStatus, 'check-manifest': cmdCheckManifest };
+const VERBS = { run: cmdRun, sign: cmdSign, publish: cmdPublish, verify: cmdVerify, status: cmdStatus, 'check-manifest': cmdCheckManifest, init: cmdInit };
 
 export async function main(argv) {
   let o; let json = argv.includes('--json');
