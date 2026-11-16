@@ -1,0 +1,1 @@
+record.windows.win1.json: pass signer=hermes@win1 host=DESKTOP-E3QEBQB created=2026-11-16T07:19:56Z
