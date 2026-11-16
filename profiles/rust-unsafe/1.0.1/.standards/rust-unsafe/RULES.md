@@ -27,6 +27,8 @@ The six blocking lints (command-line levels, like rust-base): `clippy::undocumen
 | RU4 | check | the allowlist is non-empty and no tracked file under `.github/workflows/`, `ci/` or `.ci/` invokes `.standards/rust-unsafe/unsafe.mjs miri` |
 | RU5 | miri | `cargo +<nightly> miri test --locked -p <pkg>` fails for an allowlisted package, or it executes 0 tests and the entry is not `ffi-only` |
 
+`miri` builds under a short target dir on Windows (`<drive>:\m\<hash>`, override `RUST_UNSAFE_MIRI_TARGET`) so cargo never switches to an @argfile, which cargo-miri rejects.
+
 Every failure line: `standards: FAIL [rust-unsafe/RUn] <file:line or package>: <message>`. The rustc diagnostic is printed
 as is above it.
 

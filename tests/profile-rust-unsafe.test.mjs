@@ -52,3 +52,18 @@ test('rust-unsafe: zero-dependency, shell-free, no toolchain installer for the s
   assert.match(src, /'-c', 'miri', '-c', 'rust-src'/);
   assert.equal(fs.existsSync(path.join(std, 'tool.mjs')), false);
 });
+
+test('rust-unsafe: miri uses a short target dir on Windows even under a deep repo path (cargo-miri rejects @argfiles)', async () => {
+  const { miriTargetDir } = await import(new URL(`file:///${path.join(std, 'unsafe.mjs').split(path.sep).join('/')}`));
+  const deep = `C:\Users\TLDR\AppData\Local\hermes\ci-work\runs\${'x'.repeat(40)}\work`;
+  const t = miriTargetDir(deep, {}, 'win32');
+  const parts = t.split(path.win32.sep);
+  assert.deepEqual(parts.slice(0, 2), ['C:', 'm']);
+  assert.match(parts[2], /^[0-9a-f]{8}$/);
+  assert.equal(miriTargetDir(deep, {}, 'win32'), t);
+  assert.notEqual(miriTargetDir(`${deep}2`, {}, 'win32'), t);
+  assert.equal(miriTargetDir(deep, {}, 'linux'), null);
+  assert.equal(path.resolve(miriTargetDir(deep, { RUST_UNSAFE_MIRI_TARGET: 'D:/t' }, 'win32')), path.resolve('D:/t'));
+  assert.match(src, /CARGO_TARGET_DIR/);
+  assert.match(src, /'miri', 'test', '--locked', '-p', pkg\]/);
+});
