@@ -1,0 +1,14 @@
+{
+  "profile": "rust-unsafe",
+  "version": "0.0.0",
+  "tools": {
+    "nightly": "nightly-2026-11-16"
+  },
+  "commands": [
+    {
+      "id": "unsafe",
+      "tool": "unsafe (rust-base pin + clippy)",
+      "run": ["node", ".standards/rust-unsafe/unsafe.mjs", "check"]
+    }
+  ]
+}
