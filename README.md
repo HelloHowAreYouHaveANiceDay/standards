@@ -48,6 +48,7 @@ Profiles (pick `base` plus at most one per language; each profile's rules: `.sta
 | `sdlc-docs` | every repo (docs of record, not lint) | zero-dep `docs.mjs` (R1-R5: README/AGENTS/CLAUDE shim, spec + ADR front matter, status, ids, approved specs); `--scaffold` copies absent templates |
 | `cost-table` | data only (dim-factory pricing source) | `table.mjs --check` validates model/sub/runner rows; unknown model lookup throws |
 | `ci-local` | every repo on builder-side CI (not lint) | zero-dep `ci.mjs`: run / sign / publish / verify / status (commit status `builder-ci`) over `ci/suites.json`; gate runs `check-manifest` |
+| `stripe` | every repo that calls Stripe or receives its webhooks (not lint; standard: `docs/stripe.md`) | zero-dep `lint.mjs` S1-S8: no key material in git or built output, secrets never in wrangler vars, no secret behind a browser prefix, verified webhooks, rk_-only server key, declared endpoint scope (`stripe.scope.json`), no buyer PII in metadata; live account audit `scripts/stripe-audit.mjs` (harness only, read-only) |
 | `firebase-web` | Firebase web apps (any language profile) | offline lint: rules tracked, not open, loaded by a rules test; no keys; pinned CLI |
 
 Tools install themselves, pinned and cross-platform (zero-dep `.standards/<name>/tool.mjs` runners or check.mjs's

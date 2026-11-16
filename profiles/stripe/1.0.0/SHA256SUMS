@@ -1,0 +1,3 @@
+0c5007f9f51591c7fe7d21fcfc04c19781d67243dbf170bfbd27375b07d8ba55  .standards/stripe/RULES.md
+d931cfe5cab6e9731243204bd918a76d89e42953a78a209a412f6e8eab350878  .standards/stripe/check.json
+8e88af3aad79e9ffc5f4454e424cc4df67b4890254e31d2d7736738fe5ace37c  .standards/stripe/lint.mjs
