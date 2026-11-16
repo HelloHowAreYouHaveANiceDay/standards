@@ -5,14 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { KIT_ROOT, sha256 } from './helpers.mjs';
 
-const dir = path.join(KIT_ROOT, 'profiles', 'rust-unsafe', '1.0.0');
+const dir = path.join(KIT_ROOT, 'profiles', 'rust-unsafe', '1.0.1');
 const std = path.join(dir, '.standards', 'rust-unsafe');
 const frag = JSON.parse(fs.readFileSync(path.join(std, 'check.json'), 'utf8'));
 const src = fs.readFileSync(path.join(std, 'unsafe.mjs'), 'utf8');
 
-test('rust-unsafe 1.0.0: one gate command, dated nightly pin', () => {
+test('rust-unsafe 1.0.1: one gate command, dated nightly pin', () => {
   assert.equal(frag.profile, 'rust-unsafe');
-  assert.equal(frag.version, '1.0.0');
+  assert.equal(frag.version, '1.0.1');
   assert.match(frag.tools.nightly, /^nightly-\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(frag.commands.map((c) => [c.id, c.run]), [['unsafe', ['node', '.standards/rust-unsafe/unsafe.mjs', 'check']]]);
 });
@@ -37,6 +37,12 @@ test('rust-unsafe: the six D1 lints and -F unsafe_code (not -D) are in the check
   assert.match(src, /'-A', 'warnings'/);
 });
 
+test('rust-unsafe: --no-deps precedes `--` in the shared clippy args (both run A and run B)', () => {
+  assert.match(src, /'--no-deps', '--',/);
+  assert.equal((src.match(/function clippyArgs/g) || []).length, 1);
+  assert.equal((src.match(/clippyArgs\(pkgArgs/g) || []).length >= 2, true);
+});
+
 test('rust-unsafe: zero-dependency, shell-free, no toolchain installer for the stable pin (reuses rust-base)', () => {
   assert.doesNotMatch(src, /shell:\s*true|from '(?!node:)/);
   assert.match(src, /rust-base/);
@@ -45,4 +51,19 @@ test('rust-unsafe: zero-dependency, shell-free, no toolchain installer for the s
   assert.equal(installs.length, 1);
   assert.match(src, /'-c', 'miri', '-c', 'rust-src'/);
   assert.equal(fs.existsSync(path.join(std, 'tool.mjs')), false);
+});
+
+test('rust-unsafe: miri uses a short target dir on Windows even under a deep repo path (cargo-miri rejects @argfiles)', async () => {
+  const { miriTargetDir } = await import(new URL(`file:///${path.join(std, 'unsafe.mjs').split(path.sep).join('/')}`));
+  const deep = `C:\Users\TLDR\AppData\Local\hermes\ci-work\runs\${'x'.repeat(40)}\work`;
+  const t = miriTargetDir(deep, {}, 'win32');
+  const parts = t.split(path.win32.sep);
+  assert.deepEqual(parts.slice(0, 2), ['C:', 'm']);
+  assert.match(parts[2], /^[0-9a-f]{8}$/);
+  assert.equal(miriTargetDir(deep, {}, 'win32'), t);
+  assert.notEqual(miriTargetDir(`${deep}2`, {}, 'win32'), t);
+  assert.equal(miriTargetDir(deep, {}, 'linux'), null);
+  assert.equal(path.resolve(miriTargetDir(deep, { RUST_UNSAFE_MIRI_TARGET: 'D:/t' }, 'win32')), path.resolve('D:/t'));
+  assert.match(src, /CARGO_TARGET_DIR/);
+  assert.match(src, /'miri', 'test', '--locked', '-p', pkg\]/);
 });

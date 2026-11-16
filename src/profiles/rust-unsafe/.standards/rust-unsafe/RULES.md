@@ -8,7 +8,8 @@ rust-base's toolchain, partitioning the workspace so each member is linted exact
 - Run A, packages NOT in the allowlist: `cargo clippy --locked --workspace --exclude <allowlisted> --all-targets
   --all-features -- -A warnings -F unsafe_code <six lints>`
 - Run B, allowlisted packages: `cargo clippy --locked -p <allowlisted> ... -- -A warnings <six lints>`
-A run with no packages is skipped. `-A warnings` comes first so rust-base's findings are not reported twice; the named
+Both runs pass `--no-deps` before `--`, so a selected package's path dependencies are not linted with that run's flags
+(since 1.0.1). A run with no packages is skipped. `-A warnings` comes first so rust-base's findings are not reported twice; the named
 lints still fail after it. `-F` (forbid), not `-D`: with `-D`, `#[expect(unsafe_code, reason)]` would silently bypass the
 allowlist; with `-F` it is E0453.
 
@@ -25,6 +26,8 @@ The six blocking lints (command-line levels, like rust-base): `clippy::undocumen
 | RU3 | check (runs A+B) | any of the six lints fires |
 | RU4 | check | the allowlist is non-empty and no tracked file under `.github/workflows/`, `ci/` or `.ci/` invokes `.standards/rust-unsafe/unsafe.mjs miri` |
 | RU5 | miri | `cargo +<nightly> miri test --locked -p <pkg>` fails for an allowlisted package, or it executes 0 tests and the entry is not `ffi-only` |
+
+`miri` builds under a short target dir on Windows (`<drive>:\m\<hash>`, override `RUST_UNSAFE_MIRI_TARGET`) so cargo never switches to an @argfile, which cargo-miri rejects.
 
 Every failure line: `standards: FAIL [rust-unsafe/RUn] <file:line or package>: <message>`. The rustc diagnostic is printed
 as is above it.

@@ -8,6 +8,7 @@
 // Every failure line: `standards: FAIL [rust-unsafe/RUn] <file:line or package> <message>`.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -95,7 +96,9 @@ function reportDiagnostics(out, classify, seen) {
 function clippyArgs(pkgArgs, unsafeCodeForbidden) {
   return [
     'clippy', '--locked', '--all-targets', '--all-features', '--message-format=json', ...pkgArgs,
-    '--', '-A', 'warnings',
+    // --no-deps: lint only the selected packages. Without it clippy-driver also lints path-dependency workspace
+    // members that were not selected, with THIS run's flags (an allowlisted dependency's unsafe fails run A).
+    '--no-deps', '--', '-A', 'warnings',
     ...(unsafeCodeForbidden ? ['-F', 'unsafe_code'] : []),
     ...D1_LINTS.flatMap((l) => ['-D', l]),
   ];
@@ -162,6 +165,18 @@ function ensureMiri(nightly, cwd, log) {
   return { prefix: `+${name}` };
 }
 
+// Miri's target dir. On Windows a deep checkout/runner path makes rustc lines for big dependency trees (eframe: ~200
+// -L dirs) exceed the command-line limit; cargo then switches to an @argfile, which cargo-miri rejects. So on Windows
+// build under a short per-repo dir (<drive>:\m\<8 hex of the repo path>). RUST_UNSAFE_MIRI_TARGET overrides on any
+// OS; elsewhere cargo's own target dir is kept.
+export function miriTargetDir(root, env = process.env, platform = process.platform) {
+  if (env.RUST_UNSAFE_MIRI_TARGET) return path.resolve(env.RUST_UNSAFE_MIRI_TARGET);
+  if (platform !== 'win32') return null;
+  const abs = path.win32.resolve(root);
+  const hash = createHash('sha256').update(abs.toLowerCase()).digest('hex').slice(0, 8);
+  return path.win32.join(path.win32.parse(abs).root, 'm', hash);
+}
+
 export async function miri({ root = ROOT, log = console.log } = {}) {
   const failures = [];
   const { allow, problems } = readAllow(root);
@@ -171,9 +186,12 @@ export async function miri({ root = ROOT, log = console.log } = {}) {
   if (pkgs.length === 0) { log(`standards: [${TAG}] miri: empty allowlist, nothing to run`); return failures; }
   const mi = ensureMiri(readNightly(), root, log);
   if (mi.error) return [fail('RU5', 'toolchain', mi.error)];
+  const target = miriTargetDir(root);
+  const env = target ? { ...process.env, CARGO_TARGET_DIR: target } : process.env;
+  if (target) log(`standards: [${TAG}] miri target dir: ${target}`);
   for (const pkg of pkgs) {
     log(`standards: [${TAG}] cargo ${mi.prefix} miri test --locked -p ${pkg}`);
-    const r = sh('cargo', [mi.prefix, 'miri', 'test', '--locked', '-p', pkg], { cwd: root });
+    const r = sh('cargo', [mi.prefix, 'miri', 'test', '--locked', '-p', pkg], { cwd: root, env });
     process.stdout.write(r.out.endsWith('\n') ? r.out : `${r.out}\n`);
     if (r.code !== 0) { failures.push(fail('RU5', pkg, `miri test exited ${r.code} (findings above)`)); continue; }
     let passed = 0;
