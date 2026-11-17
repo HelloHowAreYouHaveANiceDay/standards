@@ -1,0 +1,3 @@
+85af8a20006b48ae1f2f05d13b4b25bf19b7568012ee22cf2e4e558fb46a928a  .standards/firebase-web/RULES.md
+f434f5e599d2d5ef5d68330e88bb95d3ee13169f370403fdaf9bb7c3cf351adf  .standards/firebase-web/check.json
+4055a7d81bffdcafcc1e27b0e8f8e2fd99053533747298134951da50dd521e54  .standards/firebase-web/lint.mjs
