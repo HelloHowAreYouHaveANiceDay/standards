@@ -17,7 +17,7 @@
   "os": "windows",
   "host": "DESKTOP-E3QEBQB",
   "signer": "hermes@win1",
-  "created": "2026-11-17T19:14:37Z",
+  "created": "2026-11-17T19:17:39Z",
   "outcome": "pass",
   "reason": null,
   "suites": [
@@ -25,28 +25,28 @@
       "id": "append-only",
       "required": true,
       "status": "passed",
-      "duration_s": 0.1,
+      "duration_s": 0.4,
       "log_sha256": "9552ce143d8e71532bb6094b5de92bcb09369b450af116865c00cd28230ac5c5"
     },
     {
       "id": "kit-sums",
       "required": true,
       "status": "passed",
-      "duration_s": 4.4,
-      "log_sha256": "4a14daa60ae2b775d28fc35d7d4b3a59327ed25b3f537cb8e32f007da8ae68c9"
+      "duration_s": 17.6,
+      "log_sha256": "e4c9f0e4ab100adc29c1747ac280722067c7103ca83520a861d83f0255bb452a"
     },
     {
       "id": "unit",
       "required": true,
       "status": "passed",
-      "duration_s": 223.3,
-      "log_sha256": "fb38a8f8fa640f1d2b42231325fe4b7c16d5ede69eda5ab01312bd225ff5c327"
+      "duration_s": 302.7,
+      "log_sha256": "5435af208268b4eaea0841e44bc7532232aafe8e030f5ecb96f0a1a975570a9c"
     },
     {
       "id": "fixture-sync",
       "required": true,
       "status": "passed",
-      "duration_s": 1108.3,
+      "duration_s": 905.2,
       "log_sha256": "f8f60db5ad23eef37e45230338cddd4cfdbccc49320d1a14deee8c6bcd1b37b3"
     }
   ]
