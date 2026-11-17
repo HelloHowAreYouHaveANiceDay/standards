@@ -1,4 +1,4 @@
-// analytics-web 1.0.0: lint.mjs passing and failing cases per rule A1-A8, and track.mjs unit tests
+// analytics-web 1.0.1: lint.mjs passing and failing cases per rule A1-A8, and track.mjs unit tests
 // (redactUrl, consent default per time zone, in-memory visit id, never throws, no double config, no PostHog at tier 1).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
 import { KIT_ROOT, tmpdir, node, git } from './helpers.mjs';
 
-const DIR = process.env.ANALYTICS_WEB_SRC ? path.join(KIT_ROOT, 'src/profiles/analytics-web') : path.join(KIT_ROOT, 'profiles/analytics-web/1.0.0');
+const DIR = process.env.ANALYTICS_WEB_SRC ? path.join(KIT_ROOT, 'src/profiles/analytics-web') : path.join(KIT_ROOT, 'profiles/analytics-web/1.0.1');
 const SA = path.join(DIR, '.standards/analytics-web');
 const LINT = path.join(SA, 'lint.mjs');
 const l = await import(pathToFileURL(LINT).href);
@@ -107,6 +107,15 @@ test('A4: PII-named params warn without printing values, in code and in the plan
   assert.deepEqual(run({ 'src/x.ts': "track('lookup_submitted', { method: 'typed' });\n" }).warns, []);
   const p = planWith({ events: { ...PLAN.events, lookup_submitted: { stage: 'engage', params: { lat: {} } } } });
   assert.ok(has(run({}, p).warns, /A4\] analytics\.plan\.json: event lookup_submitted declares a param named lat/));
+});
+
+test('A4 (1.0.1): street/unit/parcel/latitude/longitude/zip/postal_code/city warn; coarse target_* keys are exact-key allowed', () => {
+  for (const k of ['street', 'unit', 'parcel', 'latitude', 'longitude', 'zip', 'postal_code', 'city']) {
+    assert.ok(has(run({ 'src/x.ts': `track('lookup_submitted', { ${k} });\n` }).warns, new RegExp(`A4\\] src/x\\.ts:1: track\\(\\) sends a param named ${k}`)), k);
+  }
+  assert.deepEqual(run({ 'src/x.ts': "track('lookup_submitted', { target_state, target_relation, target_distance });\n" }).warns, []);
+  const p = planWith({ events: { ...PLAN.events, lookup_submitted: { stage: 'engage', params: { target_state: {}, target_relation: {}, target_distance: {} } } } });
+  assert.deepEqual(run({}, p).warns, []);
 });
 
 test('A5/A6: raw gtag config needs a host gate, consent default and redactUrl; initAnalytics satisfies all three', () => {
