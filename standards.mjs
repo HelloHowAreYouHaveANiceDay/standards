@@ -62,7 +62,8 @@ function readManifest(root) {
   if (!fs.existsSync(f)) return null;
   const m = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (!m || typeof m.profiles !== 'object' || !m.profiles) throw new CliError('error', '.standards.json has no "profiles" object');
-  return { kit: m.kit || DEFAULT_KIT, profiles: m.profiles };
+  const { kit, profiles, ...extra } = m; // follower-owned extra keys survive upgrade
+  return { ...extra, kit: kit || DEFAULT_KIT, profiles };
 }
 
 async function kitText(src, rel) { try { return (await src.get(rel)).toString('utf8'); } catch { return null; } }
