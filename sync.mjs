@@ -235,6 +235,9 @@ function managedShas(root) {
   return out;
 }
 
+// Manifest bytes: kit + profiles first, then any follower-owned extra keys unchanged.
+export function manifestOut(m) { const { kit, profiles, ...extra } = m; return { kit, profiles, ...extra }; }
+
 // What apply() would do, plus conflicts: files it would overwrite or delete that the locks do not vouch for
 // ('unmanaged' = no lock lists it, e.g. the repo's own .gitattributes; 'hand-edited' = sha differs from the lock).
 export function diffPlan(root, p, manifest) {
@@ -242,7 +245,7 @@ export function diffPlan(root, p, manifest) {
   const managed = managedShas(root);
   const want = new Map([...p.files, ...p.generated]);
   for (const [n, buf] of p.locks) want.set(`.standards/${n}.SHA256SUMS`, buf);
-  if (manifest) want.set('.standards.json', Buffer.from(`${JSON.stringify({ kit: manifest.kit, profiles: manifest.profiles }, null, 2)}\n`));
+  if (manifest) want.set('.standards.json', Buffer.from(`${JSON.stringify(manifestOut(manifest), null, 2)}\n`));
   const write = []; const remove = []; const conflicts = [];
   for (const [rel, buf] of want) {
     if (!fs.existsSync(abs(rel))) { write.push(rel); continue; }
@@ -314,7 +317,7 @@ export function apply(root, p, manifest) {
   const genAbs = path.join(std, 'generated.SHA256SUMS');
   if (genSums) { if (writeIfChanged(genAbs, Buffer.from(genSums))) written.push('.standards/generated.SHA256SUMS'); } else if (fs.existsSync(genAbs)) fs.rmSync(genAbs);
   if (manifest) {
-    const buf = Buffer.from(`${JSON.stringify({ kit: manifest.kit, profiles: manifest.profiles }, null, 2)}\n`);
+    const buf = Buffer.from(`${JSON.stringify(manifestOut(manifest), null, 2)}\n`);
     if (writeIfChanged(path.join(root, '.standards.json'), buf)) written.push('.standards.json');
   }
   return { written, removed };
@@ -342,7 +345,8 @@ function readManifest(root) {
   if (!fs.existsSync(f)) throw new Error('no .standards.json here (use init)');
   const m = JSON.parse(fs.readFileSync(f, 'utf8'));
   if (!m || typeof m.profiles !== 'object') throw new Error('.standards.json has no "profiles" object');
-  return { kit: m.kit || DEFAULT_KIT, profiles: m.profiles };
+  const { kit, profiles, ...extra } = m; // other top-level keys (e.g. "firebase-web" options) are follower-owned: keep them
+  return { ...extra, kit: kit || DEFAULT_KIT, profiles };
 }
 
 function report(verb, r) {
