@@ -1,0 +1,53 @@
+{
+  "schema": "ci-record/1",
+  "key": "1928cb61d0218083909fd7d7df0ef875ed88a0414dcb61865a003ab565c78493",
+  "tree": "5d95cfa905de745cab32ee2c039091fcd6e59102",
+  "commit": "d1ebb1761ce0ee77d4bf52df6f79247a8138571e",
+  "base": "827ac6acf455628ca4c2b756cf3b4f4de92a7d68",
+  "ci_local_version": "1.2.0",
+  "toolchain": {
+    "os": "windows",
+    "arch": "x64",
+    "probes": {
+      "node": "26.7.0",
+      "go": "1.26.2"
+    }
+  },
+  "manifest_sha256": "8025df262649dff69e731a2ceeb234c843766f755675e11079f01da12594458f",
+  "os": "windows",
+  "host": "DESKTOP-E3QEBQB",
+  "signer": "hermes@win1",
+  "created": "2026-11-17T03:53:52Z",
+  "outcome": "pass",
+  "reason": null,
+  "suites": [
+    {
+      "id": "append-only",
+      "required": true,
+      "status": "passed",
+      "duration_s": 0.5,
+      "log_sha256": "9552ce143d8e71532bb6094b5de92bcb09369b450af116865c00cd28230ac5c5"
+    },
+    {
+      "id": "kit-sums",
+      "required": true,
+      "status": "passed",
+      "duration_s": 40.1,
+      "log_sha256": "087e36adcd4d93ec1e8bd394ae6c4ea548ccdc82cae0a1d5948f6a06edb96c50"
+    },
+    {
+      "id": "unit",
+      "required": true,
+      "status": "passed",
+      "duration_s": 611.9,
+      "log_sha256": "df865b0384c29a65750d576f0e14a9cd90f1ef2266b789ade2d6bfb23f6a7a61"
+    },
+    {
+      "id": "fixture-sync",
+      "required": true,
+      "status": "passed",
+      "duration_s": 1028.6,
+      "log_sha256": "b802ee0649de568a69c4af8a0eca1bfc82fb8999b6b539247044830bfdeaf01f"
+    }
+  ]
+}
