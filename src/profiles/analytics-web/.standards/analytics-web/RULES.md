@@ -10,7 +10,7 @@ prints a param value, URL or UTM value (only the file and line).
 | A1 | FAIL | `analytics.plan.json` is missing or invalid: bad schema/tier, no hosts, bad GA4 id, event names off `^[a-z][a-z0-9_]{1,39}$`, unknown stage or sink, not exactly one `activate`, a param name off snake_case or more than 25 params, `posthog` set at tier 1 | this spec |
 | A2 | WARN | more than one `gtag/js` load or `gtag('config')` in a file, or `.ts/.js/.mjs` code injecting `gtag/js` | double-tag trap |
 | A3 | WARN | a literal event name not in the plan, or a computed first argument to `track()` / `gtag('event')` / a plan `wrappers` function outside a wrapper's own body | OTel events |
-| A4 | WARN | a param key named `address email phone name lat lng lon q query ip` (in code or in the plan) | GA4 PII policy |
+| A4 | WARN | a param key named `address email phone name lat lng lon q query ip street unit parcel latitude longitude zip postal_code city` (exact key match, in code or in the plan; coarse derived keys such as `target_state`, `target_relation`, `target_distance` are allowed) | GA4 PII policy; spec `projects/spec--analytics-standard.md` "User dimensions and physical-location granularity" |
 | A5 | WARN | `gtag('config')` with no host gate before it (`initAnalytics` counts as one) | dev-traffic audit |
 | A6 | WARN | no consent default before `gtag('config')`, or its `page_location` does not go through `redactUrl` | Consent Mode v2 |
 | A7 | WARN | PostHog is loaded while the plan says `tier: 1` | ladder |
