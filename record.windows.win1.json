@@ -17,7 +17,7 @@
   "os": "windows",
   "host": "DESKTOP-E3QEBQB",
   "signer": "hermes@win1",
-  "created": "2026-11-17T02:21:52Z",
+  "created": "2026-11-17T02:19:17Z",
   "outcome": "pass",
   "reason": null,
   "suites": [
@@ -32,21 +32,21 @@
       "id": "kit-sums",
       "required": true,
       "status": "passed",
-      "duration_s": 5.1,
-      "log_sha256": "ab457ad3166f584f4fe1118aaa0dfc60f90850afd60949a875070ec95a93518b"
+      "duration_s": 3,
+      "log_sha256": "88d930e30e9854faa44a56c74f4b0e850602c866e74583e11aa012be564ef7af"
     },
     {
       "id": "unit",
       "required": true,
       "status": "passed",
-      "duration_s": 382.5,
-      "log_sha256": "dca2ce5754f9a973d4d7a8c103247d692ff95a0527c838ceb03b1c78868acfb8"
+      "duration_s": 350,
+      "log_sha256": "92f7e4b333a8fbbf7d795637269ded5ae71e8fa453764a78f48def57be4bdfee"
     },
     {
       "id": "fixture-sync",
       "required": true,
       "status": "passed",
-      "duration_s": 1091.4,
+      "duration_s": 1282.7,
       "log_sha256": "b802ee0649de568a69c4af8a0eca1bfc82fb8999b6b539247044830bfdeaf01f"
     }
   ]
