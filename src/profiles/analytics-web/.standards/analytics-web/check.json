@@ -1,0 +1,11 @@
+{
+  "profile": "analytics-web",
+  "version": "0.0.0",
+  "commands": [
+    {
+      "id": "analytics-web-lint",
+      "tool": "lint",
+      "run": ["node", ".standards/analytics-web/lint.mjs"]
+    }
+  ]
+}
