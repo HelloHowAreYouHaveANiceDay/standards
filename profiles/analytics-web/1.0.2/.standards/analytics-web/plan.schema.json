@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "analytics-plan/1",
+  "description": "analytics.plan.json (app root, follower-owned). lint.mjs rule A1 enforces this shape plus: exactly one stage \"activate\"; posthog null at tier 1.",
+  "type": "object",
+  "required": ["schema", "tier", "property", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "analytics-plan/1" },
+    "tier": { "enum": [1, 2] },
+    "visit_id": { "type": "boolean" },
+    "wrappers": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$" } },
+    "property": {
+      "type": "object",
+      "required": ["domain", "hosts", "ga4", "posthog"],
+      "additionalProperties": false,
+      "properties": {
+        "domain": { "type": "string", "minLength": 1 },
+        "hosts": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "ga4": { "type": "string", "pattern": "^G-[A-Z0-9]+$" },
+        "posthog": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["project", "decision"], "properties": { "project": { "type": ["string", "number"] }, "decision": { "type": "string", "minLength": 1 } }, "additionalProperties": false }
+          ]
+        },
+        "url_params": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\*?$" } }
+      }
+    },
+    "events": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{1,39}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["stage"],
+        "additionalProperties": false,
+        "properties": {
+          "stage": { "enum": ["landing", "engage", "activate", "convert", "pay"] },
+          "key_event": { "type": "boolean" },
+          "sinks": { "type": "array", "items": { "enum": ["ga4", "ae", "posthog"] } },
+          "params": {
+            "type": "object",
+            "maxProperties": 25,
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "enum": { "type": "array", "items": { "type": "string" } }, "dim": { "type": "boolean" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

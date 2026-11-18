@@ -4,6 +4,11 @@ Tier-1 user-side analytics (GA4, with GSC and Bing WMT beside it) for every web 
 `projects/spec--analytics-standard.md`). One follower-owned `analytics.plan.json`; `lint.mjs` rules A1-A8; a zero-dep
 `track.mjs` sink (host gate, Consent Mode v2 defaults, URL allowlist). Pairs with base.
 
+## 1.0.2
+
+- A8: `ai-agent` added to the allowed `utm_medium` list (links in content served to AI agents; `utm_source` = agent
+  label). Still WARN.
+
 ## 1.0.1
 
 - A4 key list extended for user/location dimensions: adds `street unit parcel latitude longitude zip postal_code city`

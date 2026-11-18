@@ -35,7 +35,8 @@ Lowercase, one value per platform, fixed medium list. [UTM best practices]
 
 - `utm_source` = platform (`youtube`, `x`, `linkedin`, `reddit`, `substack`, `newsletter`), or the site domain for a
   cross-site link.
-- `utm_medium` in `social | video | email | referral | community | partner`.
+- `utm_medium` in `social | video | email | referral | community | partner | ai-agent`. Use `ai-agent`
+  for links in content served to AI agents, with `utm_source` = the agent label.
 - `utm_campaign` = lowercase slug of the post or launch (`bimcli-launch-2026-11`).
 - Our own links between our sites stay untagged unless a launch is measured: tags overwrite the real source. Lint A8
   checks links in code and in `.md`/`.mdx`.

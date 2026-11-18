@@ -1,4 +1,4 @@
-// analytics-web 1.0.1: lint.mjs passing and failing cases per rule A1-A8, and track.mjs unit tests
+// analytics-web 1.0.2: lint.mjs passing and failing cases per rule A1-A8, and track.mjs unit tests
 // (redactUrl, consent default per time zone, in-memory visit id, never throws, no double config, no PostHog at tier 1).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
 import { KIT_ROOT, tmpdir, node, git } from './helpers.mjs';
 
-const DIR = process.env.ANALYTICS_WEB_SRC ? path.join(KIT_ROOT, 'src/profiles/analytics-web') : path.join(KIT_ROOT, 'profiles/analytics-web/1.0.1');
+const DIR = process.env.ANALYTICS_WEB_SRC ? path.join(KIT_ROOT, 'src/profiles/analytics-web') : path.join(KIT_ROOT, 'profiles/analytics-web/1.0.2');
 const SA = path.join(DIR, '.standards/analytics-web');
 const LINT = path.join(SA, 'lint.mjs');
 const l = await import(pathToFileURL(LINT).href);
@@ -135,6 +135,12 @@ test('A7: PostHog at tier 1 warns; at tier 2 it does not', () => {
   assert.ok(has(run({ 'src/ph.ts': ph }).warns, /A7\] src\/ph\.ts:1: loads PostHog but analytics\.plan\.json says tier 1/));
   const t2 = planWith({ tier: 2, property: { ...PLAN.property, posthog: { project: 1, decision: 'log#1' } } });
   assert.deepEqual(run({ 'src/ph.ts': ph }, t2).warns, []);
+});
+
+test('A8 (1.0.2): utm_medium=ai-agent is allowed; unknown ai-bot still warns', () => {
+  const link = (m) => ({ 'posts/a.md': `[x](https://example.com/?utm_source=claude&utm_medium=${m})\n` });
+  assert.deepEqual(run(link('ai-agent')).warns, []);
+  assert.ok(has(run(link('ai-bot')).warns, /A8\] posts\/a\.md:1: a link's utm_medium is not one of/));
 });
 
 test('A8: uppercase utm values and off-list mediums warn (code and markdown); values are not printed', () => {

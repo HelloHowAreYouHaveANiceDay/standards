@@ -33,7 +33,7 @@ track("lookup_completed");
 
 export const fixture = {
   id: 'analytics-web',
-  profiles: ['base@1.0.0', 'analytics-web@1.0.1'],
+  profiles: ['base@1.0.0', 'analytics-web@1.0.2'],
   files: {
     'analytics.plan.json': PLAN,
     'index.html': PAGE,
@@ -69,5 +69,14 @@ export const fixture = {
     bites('analytics-web: a second gtag config warns A2', /WARN \[analytics-web\/A2\] index\.html:\d+: second gtag\('config'\)/, 'index.html', PAGE.replace('</head>', "<script>gtag('config','G-ABC123XYZ')</script>\n<script>gtag('config','G-ABC123XYZ')</script>\n</head>"));
     bites('analytics-web: a raw config without a host gate warns A5', /WARN \[analytics-web\/A5\] index\.html:\d+: no host gate before gtag\('config'\)/, 'index.html', PAGE.replace(/<script type="module">[\s\S]*?<\/script>/, "<script>gtag('config','G-ABC123XYZ')</script>"));
     bites('analytics-web: utm_medium=Social warns A8', /WARN \[analytics-web\/A8\] index\.html:\d+: a link's utm_medium has uppercase/, 'index.html', PAGE.replace('<body>', '<body><a href="https://example.com/?utm_source=x&utm_medium=Social">x</a>'));
+    bites('analytics-web: unknown utm_medium=ai-bot warns A8', /WARN \[analytics-web\/A8\] index\.html:\d+: a link's utm_medium is not one of/, 'index.html', PAGE.replace('<body>', '<body><a href="https://example.com/?utm_source=x&utm_medium=ai-bot">x</a>'));
+    {
+      const before = keep('index.html');
+      w('index.html', PAGE.replace('<body>', '<body><a href="https://example.com/?utm_source=claude&utm_medium=ai-agent">x</a>'));
+      h.git('add', '-A');
+      const r = h.check();
+      h.step(r.code === 0 && !/analytics-web\/A8/.test(r.out), 'analytics-web: utm_medium=ai-agent is allowed (A8)', r.out);
+      restore('index.html', before);
+    }
   },
 };

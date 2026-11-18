@@ -14,7 +14,7 @@ prints a param value, URL or UTM value (only the file and line).
 | A5 | WARN | `gtag('config')` with no host gate before it (`initAnalytics` counts as one) | dev-traffic audit |
 | A6 | WARN | no consent default before `gtag('config')`, or its `page_location` does not go through `redactUrl` | Consent Mode v2 |
 | A7 | WARN | PostHog is loaded while the plan says `tier: 1` | ladder |
-| A8 | WARN | a link carrying `utm_*` with uppercase, or `utm_medium` outside `social video email referral community partner` (also scans `.md .mdx`) | UTM best practices |
+| A8 | WARN | a link carrying `utm_*` with uppercase, or `utm_medium` outside `social video email referral community partner ai-agent` (`ai-agent`: links in content served to AI agents, `utm_source` = agent label) (also scans `.md .mdx`) | UTM best practices |
 
 Scans tracked `.html .astro .njk .ts .tsx .js .mjs .vue` (A8 also `.md .mdx`), skipping vendored and build dirs; A2-A7
 skip test files. WARN does not fail the gate; A2-A8 flip to FAIL in 1.1.0 once the followers are clean.
