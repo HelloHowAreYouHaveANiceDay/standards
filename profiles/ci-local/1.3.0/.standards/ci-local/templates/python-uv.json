@@ -1,0 +1,12 @@
+{
+  "schema": "ci-local/1",
+  "os_required": "any",
+  "toolchain": { "python": "3.11", "uv": "0.4" },
+  "setup": [],
+  "suites": [
+    { "id": "sync", "run": ["uv sync --locked"], "required": true, "os": "any", "timeout_min": 15 },
+    { "id": "test", "run": ["uv run pytest"], "required": true, "os": "any", "timeout_min": 30 },
+    { "id": "lint", "run": ["uv run ruff check ."], "required": true, "os": "any", "timeout_min": 10 },
+    { "id": "secret-scan", "run": ["node ci/scripts/secret-scan.mjs"], "required": true, "os": "any", "timeout_min": 5 }
+  ]
+}

@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -369,6 +369,29 @@ function readRef(cwd, ref) {
   return files;
 }
 
+// Record files that an older commit on the ref carried and a later publish replaced (a host re-running writes the same
+// file name): { name, rec buffer, sig buffer }. verify counts a failing one: a red is never out-voted (ci-local 1.3.0).
+function replacedRecords(cwd, ref, tip) {
+  const revs = gitTry(cwd, ['rev-list', ref]);
+  if (!revs) return [];
+  const seen = new Set(Object.entries(tip).map(([n, b]) => `${n}:${b.toString('hex')}`));
+  const out = [];
+  for (const c of revs.split('\n').filter(Boolean).slice(1)) {
+    const ls = gitTry(cwd, ['ls-tree', '-r', c]);
+    if (!ls) continue;
+    const blobs = {};
+    for (const line of ls.split('\n').filter(Boolean)) { const [meta, name] = line.split('\t'); blobs[name] = meta.split(' ')[2]; }
+    for (const name of Object.keys(blobs).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n) && blobs[`${n}.sig`])) {
+      const buf = gitOk(cwd, ['cat-file', 'blob', blobs[name]], 'cat-file', { binary: true });
+      const key = `${name}:${buf.toString('hex')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ name, buf, sig: gitOk(cwd, ['cat-file', 'blob', blobs[`${name}.sig`]], 'cat-file', { binary: true }) });
+    }
+  }
+  return out;
+}
+
 function cmdPublish(o) {
   const cwd = repoRoot(o);
   const recPath = o._[1]; if (!recPath) throw usage('publish RECORD');
@@ -465,12 +488,16 @@ export function verifyCore(o, cwd) {
   // A record that fails any check is ignored and listed as a note: ignoring one can never grant a pass.
   const verified = [];
   const note = (code, detail) => summary.notes.push({ code, detail });
-  for (const name of Object.keys(files).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n)).sort()) {
+  // Rule (1.3.0): for the same tree and OS any failing verified record is a fail. A host re-running replaces its own
+  // record file, so older ref commits are read too; only their FAILING records count (a replaced pass changes nothing).
+  const candidates = Object.keys(files).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n)).sort().map((name) => ({ name, buf: files[name], sig: files[`${name}.sig`], replaced: false }));
+  for (const h of replacedRecords(cwd, ref, files)) candidates.push({ ...h, replaced: true });
+  for (const { name, buf, sig: sigBuf, replaced } of candidates) {
     const osName = name.split('.')[1];
-    const sigBuf = files[`${name}.sig`];
-    let rec; try { rec = JSON.parse(files[name].toString('utf8')); } catch { /* bad-signature below */ }
+    let rec; try { rec = JSON.parse(buf.toString('utf8')); } catch { /* bad-signature below */ }
+    if (replaced && rec?.outcome === 'pass') continue;
     if (!sigBuf) { note('unsigned', `${name} has no .sig`); continue; }
-    const v = sshVerify(signersText, rec?.signer ?? '', files[name], sigBuf, o['verify-time'] === 'record' && rec?.created ? rec.created.replace(/[-:TZ]/g, '').slice(0, 14) : null);
+    const v = sshVerify(signersText, rec?.signer ?? '', buf, sigBuf, o['verify-time'] === 'record' && rec?.created ? rec.created.replace(/[-:TZ]/g, '').slice(0, 14) : null);
     if (!rec || !v.ok) { note('bad-signature', `${name}: ${v.detail}`); continue; }
     if (rec.tree !== tree) { note('wrong-tree', `${name}: record.tree ${String(rec.tree).slice(0, 12)} != head tree ${tree.slice(0, 12)}`); continue; }
     if (rec.os !== osName || rec.toolchain?.os !== osName) { note('wrong-os', `${name}: record claims ${rec.os}/${rec.toolchain?.os}`); continue; }
@@ -478,7 +505,7 @@ export function verifyCore(o, cwd) {
     const tcBad = Object.entries(effectiveToolchain(head, osName)).filter(([k, pin]) => !versionMatches(pin, rec.toolchain?.probes?.[k]));
     if (tcBad.length) { note('toolchain-mismatch', `${name}: ${tcBad.map(([k, p]) => `${k} have ${rec.toolchain?.probes?.[k] ?? 'none'} pin ${pinVersion(p)}`).join('; ')}`); continue; }
     if (rec.key !== recordKey(rec.tree, rec.toolchain)) { note('bad-key', `${name}: key does not match tree+toolchain+version`); continue; }
-    verified.push(rec);
+    verified.push(replaced ? { ...rec, replaced: true } : rec);
   }
 
   // Records from OSes that do not count are ignored (any-mode: every OS counts).
@@ -486,7 +513,7 @@ export function verifyCore(o, cwd) {
   for (const r of usable) summary.records.push({ os: r.os, signer: r.signer, host: r.host, outcome: r.outcome, created: r.created });
   const missing = anyMode ? [] : osSpec.filter((x) => !usable.some((r) => r.os === x));
   if (!usable.length && !missing.length) waiting.push('no usable record yet');
-  for (const r of usable) if (r.outcome !== 'pass') fail('record-failed', `${r.os}: ${r.reason ?? 'outcome fail'}`);
+  for (const r of usable) if (r.outcome !== 'pass') fail('record-failed', `${r.os}: ${r.reason ?? 'outcome fail'}${r.replaced ? ' (replaced by a later record; a failing record for the tree is never out-voted)' : ''}`);
   for (const s of head.suites.filter((x) => x.required)) {
     const sts = usable.map((r) => ({ os: r.os, st: r.suites?.find((x) => x.id === s.id)?.status }));
     const failedOn = sts.find((x) => x.st === 'failed');
