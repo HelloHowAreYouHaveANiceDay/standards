@@ -5,6 +5,20 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.3.0
+
+A failing record is never out-voted (spec `_design-ci/spec-builder-side-ci.v5.md` section 5, "a usable record with outcome
+fail ... means failure"; "one OS record failed, another passed: failure"). Gap found on factory tree 5a58e295: a host that
+re-runs a tree publishes the same file name (`record.<os>.<host>.json`), so a later pass replaced its own earlier red and
+`verify` posted success. `VERSION` is 1.3.0, so a tree that re-syncs re-runs once (`ci-version-mismatch`).
+
+- `verify` also reads the older commits of `refs/ci/<tree>` and counts any FAILING record that a later publish replaced
+  (same signature, tree, OS, version, toolchain and key checks as a current record). A replaced PASS is ignored; it
+  changes nothing. The failure reason says `(replaced by a later record; ...)`.
+- A flaky test is fixed, never out-voted: the tree stays red until a new tree (the fix) is built. Re-running a red tree
+  to get green no longer works.
+- Manifest schema, record schema and `allowed_signers.org` unchanged.
+
 ## 1.2.0
 
 Stack templates and `ci init` (spec `_design-ci/spec-builder-side-ci.v5.md` 4.1, slice R1; owner go 2026-11-16). Additive:

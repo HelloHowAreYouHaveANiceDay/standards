@@ -1,4 +1,4 @@
-// ci-local 1.2.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
+// ci-local 1.3.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
 // ed25519 key. Every failure mode asserts a NAMED reason. ssh-keygen -Y and git are real; nothing touches GitHub
 // (status POSTs go to a local http server). os_required "any" and the all-of list are also covered on SIMULATED
 // linux / macos / windows records (signed with the fixture key), because CI runs on one host OS at a time.
@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.2.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.3.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -257,6 +257,25 @@ test('any-mode: a real red from any host is red; passing records elsewhere do no
   simulate(repo, sha, 'linux', { outcome: 'fail', reason: 'setup-failed: x' });
   v = ci(repo, ['verify', '--sha', sha]);
   assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['record-failed']);
+});
+
+test('a failing record for the tree and OS is never out-voted: a later pass by the same host (replacing its file) cannot clear it', () => {
+  let repo = fixture({ man: anyManifest() });
+  let sha = feat(repo);
+  simulate(repo, sha, 'linux', { signer: 'dim@lin1', status: { unit: 'failed' }, outcome: 'fail', reason: 'suite-failed: unit' });
+  simulate(repo, sha, 'linux', { signer: 'dim@lin1' }); // same file name: the red is only in the ref history now
+  let v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1, JSON.stringify(v.result));
+  assert.ok(reasons(v).includes('record-failed'), reasons(v).join());
+  assert.match(JSON.stringify(v.result.reasons), /replaced by a later record/);
+  assert.equal(ci(repo, ['status', '--sha', sha, '--repo', 'o/r', '--dry-run']).result.request.body.state, 'failure');
+
+  // a new tree (the fix) starts clean: no inherited red
+  repo = fixture({ man: anyManifest() }); sha = feat(repo);
+  simulate(repo, sha, 'linux', { signer: 'dim@lin1', outcome: 'fail', reason: 'suite-failed: unit', status: { unit: 'failed' } });
+  const sha2 = branch(repo, 'feat2', { 'c.txt': 'c\n' });
+  simulate(repo, sha2, 'linux', { signer: 'dim@lin1' });
+  assert.equal(ci(repo, ['verify', '--sha', sha2]).code, 0);
 });
 
 test('all-of mode on simulated hosts: every listed OS needs a record; one missing is pending; a red on any is red; others are ignored', () => {

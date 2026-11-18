@@ -1,0 +1,11 @@
+{
+  "schema": "ci-local/1",
+  "os_required": "any",
+  "toolchain": { "dotnet": "8" },
+  "setup": [],
+  "suites": [
+    { "id": "build", "run": ["dotnet build --nologo -c Release"], "required": true, "os": "any", "timeout_min": 20 },
+    { "id": "test", "run": ["dotnet test --nologo -c Release --no-build"], "required": true, "os": "any", "timeout_min": 30 },
+    { "id": "secret-scan", "run": ["node ci/scripts/secret-scan.mjs"], "required": true, "os": "any", "timeout_min": 5 }
+  ]
+}
