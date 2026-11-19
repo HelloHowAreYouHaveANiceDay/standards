@@ -5,6 +5,26 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.4.0
+
+The code owner's review replaces the `ci-manifest-approved` label (libo go, 2026-11-19: approving the PR and also
+labelling it is redundant). `VERSION` is 1.4.0, so a tree that re-syncs re-runs once (`ci-version-mismatch`).
+
+- `status`: when the head changes `ci/`, `.standards/ci-local/` or `.github/` and `--approved` is not given, it asks
+  GitHub (`GET commits/<sha>/pulls`, `GET pulls/<n>/reviews`) whether an open PR whose head is this commit has an
+  APPROVED review **on this commit** from a code owner of every changed path. That counts as the approval.
+  - Owners come from CODEOWNERS on the **default branch** (`.github/`, root or `docs/`), so a PR can't name its own
+    approver. Only user owners (`@login`) count; teams and emails don't.
+  - The latest non-comment review per person counts, so a later "changes requested" withdraws an approval.
+  - An approval of an older commit doesn't count. With stale-review dismissal (repo-gate item 3), a push needs a
+    fresh approval anyway.
+  - The result carries `manifest_approval` (`{approved, pr, by}` or `{approved: false, why}`).
+- `--approved` (the label's flag) still works and is deprecated; 2.0.0 removes it. `verify` is unchanged: it is
+  offline and still needs `--approved` for a CI-file change.
+- The script-entry check compares real paths, so `ci.mjs` runs when invoked through a symlinked dir (macOS `/var` is
+  `/private/var`). Before, it exited 0 with no output there.
+- Pairs with repo-gate 2.0.0, which puts `/ci/` and `/.standards/` under the owner's review.
+
 ## 1.3.1
 
 - Enrolls the macOS builder host signer in `allowed_signers.org`: `hermes@mac1` (haus, the Mac agent; ed25519, namespace

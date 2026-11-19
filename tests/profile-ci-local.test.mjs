@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.3.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.4.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -53,7 +53,7 @@ function fixture({ man = manifest(), sig = signers(), ciSrc = CI_SRC } = {}) {
 const env = { ...process.env, CI_SIGNER: 'dim@test' };
 function ci(repo, args, extraEnv = {}) {
   const r = spawnSync(process.execPath, [path.join(repo, '.standards/ci-local/ci.mjs'), ...args, '--json'], { cwd: repo, encoding: 'utf8', env: { ...env, ...extraEnv } });
-  let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`no envelope (exit ${r.status}): ${r.stdout}${r.stderr}`); }
+  let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`no envelope (exit ${r.status}) for ${args.join(' ')}: ${r.stdout}${r.stderr}${r.error ?? ''}`); }
   return { code: r.status, ...j };
 }
 function branch(repo, name, files) {
@@ -535,6 +535,69 @@ test('status --dry-run prints the exact request; a real POST sends it with the t
     assert.deepEqual(got, [{ url: `/repos/acme/widgets/statuses/${sha}`, auth: 'Bearer tok123', body: d.result.request.body }]);
     const no = await run({ GH_TOKEN: '', GITHUB_TOKEN: '' });
     assert.equal(no.ok, false); assert.equal(no.error.code, 'no-token');
+  } finally { srv.close(); }
+});
+
+test('1.4.0 codeowners: last matching rule wins; anchored, unanchored, dir and glob patterns; only user owners count', async () => {
+  const { codeownersRules, userOwnersOf } = await import(pathToFileURL(CI_SRC).href);
+  if (!codeownersRules) return; // a released dir before 1.4.0
+  const r = codeownersRules('# c\n/.github/ @Owner\n/ci/ @owner @org/team\n*secret* @x\nauth/ @y\ndocs/*.md @d # trailing\n/ci/scripts/ @org/ops\n');
+  assert.deepEqual(userOwnersOf(r, '.github/workflows/a.yml'), ['owner']);
+  assert.deepEqual(userOwnersOf(r, 'ci/suites.json'), ['owner']);
+  assert.deepEqual(userOwnersOf(r, 'ci/scripts/s.mjs'), [], 'a later team-only rule wins and teams do not count');
+  assert.deepEqual(userOwnersOf(r, 'x/my.secret'), ['x']);
+  assert.deepEqual(userOwnersOf(r, 'src/auth/a.ts'), ['y']);
+  assert.deepEqual(userOwnersOf(r, 'docs/a.md'), ['d']);
+  assert.deepEqual(userOwnersOf(r, 'docs/x/a.md'), []);
+  assert.deepEqual(userOwnersOf(r, 'README.md'), []);
+});
+
+test('1.4.0 status: a code owner approving THIS commit on its open PR approves a CI-file change; anything less stays manifest-changed', async () => {
+  if (!(await import(pathToFileURL(CI_SRC).href)).codeownersRules) return; // a released dir before 1.4.0
+  const repo = fixture({ man: anyManifest() });
+  fs.mkdirSync(path.join(repo, '.github'));
+  fs.writeFileSync(path.join(repo, '.github/CODEOWNERS'), '/.github/ @owner\n/ci/ @Owner\n');
+  g(repo, 'add', '-A'); g(repo, 'commit', '-q', '-m', 'codeowners');
+  const sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n' });
+  simulate(repo, sha, 'linux');
+  // A PR that makes ITSELF the owner: CODEOWNERS is read from main, so this does not count.
+  const self = branch(repo, 'self', { 'ci/scripts/x.mjs': '1\n', '.github/CODEOWNERS': '/ci/ @mallory\n/.github/ @mallory\n' });
+  simulate(repo, self, 'linux');
+
+  let reviews = [];
+  const posted = [];
+  const srv = http.createServer((req, res) => {
+    let b = ''; req.on('data', (c) => { b += c; });
+    req.on('end', () => {
+      const head = req.url.match(/^\/repos\/acme\/widgets\/commits\/([0-9a-f]+)\/pulls$/);
+      if (req.method === 'GET' && head) { res.writeHead(200); res.end(JSON.stringify([{ number: 7, state: 'open', head: { sha: head[1] } }])); return; }
+      if (req.method === 'GET' && req.url.startsWith('/repos/acme/widgets/pulls/7/reviews')) { res.writeHead(200); res.end(JSON.stringify(reviews)); return; }
+      posted.push(JSON.parse(b).state); res.writeHead(201); res.end('{}');
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  try {
+    const base = `http://127.0.0.1:${srv.address().port}`;
+    const status = async (at) => {
+      const { stdout } = await promisify(execFile)(process.execPath, [path.join(repo, '.standards/ci-local/ci.mjs'), 'status', '--sha', at, '--repo', 'acme/widgets', '--api-base', base, '--default-branch', 'main', '--json'], { cwd: repo, env: { ...env, GH_TOKEN: 'tok', GITHUB_TOKEN: '' } }).catch((e) => e);
+      return JSON.parse(stdout).result;
+    };
+    const rv = (login, state, commit) => ({ user: { login }, state, commit_id: commit });
+    let s = await status(sha);
+    assert.equal(s.verdict, 'fail'); assert.match(s.manifest_approval.why, /no code-owner approval/);
+    reviews = [rv('owner', 'APPROVED', 'f'.repeat(40))];
+    assert.equal((await status(sha)).verdict, 'fail', 'an approval of an older commit does not count');
+    reviews = [rv('someone', 'APPROVED', sha)];
+    assert.equal((await status(sha)).verdict, 'fail', 'a non-owner approval does not count');
+    reviews = [rv('owner', 'APPROVED', sha), rv('owner', 'CHANGES_REQUESTED', sha)];
+    assert.equal((await status(sha)).verdict, 'fail', 'the latest review per person counts');
+    reviews = [rv('owner', 'CHANGES_REQUESTED', sha), rv('owner', 'APPROVED', sha), rv('owner', 'COMMENTED', sha)];
+    s = await status(sha);
+    assert.equal(s.verdict, 'pass', JSON.stringify(s)); assert.deepEqual(s.manifest_approval, { approved: true, pr: 7, by: ['owner'] });
+    reviews = [rv('mallory', 'APPROVED', self)];
+    s = await status(self);
+    assert.equal(s.verdict, 'fail'); assert.match(s.manifest_approval.why, /no code-owner approval/);
+    assert.deepEqual(posted, ['failure', 'failure', 'failure', 'failure', 'success', 'failure']);
   } finally { srv.close(); }
 });
 
