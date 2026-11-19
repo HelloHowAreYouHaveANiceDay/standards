@@ -41,6 +41,13 @@ export function pinProblems(root = ROOT, tools = readJson(path.join(HERE, 'check
     if (declared[name] === undefined) out.push(`package.json: ${name} is not a dependency (the profile needs the framework package; fix: npm i ${name})`);
     if (installedVersion(root, name) === null) out.push(`node_modules/${name}: not installed (fix: npm ci)`);
   }
+  // eslint-config-next must share next's major (eslint-config-next 16 is built for next 16).
+  const nextV = peers.includes('next') ? installedVersion(root, 'next') : null;
+  const cfgV = Object.hasOwn(tools, 'eslint-config-next') ? installedVersion(root, 'eslint-config-next') : null;
+  if (nextV && cfgV) {
+    const major = (v) => String(v).split('.')[0];
+    if (major(nextV) !== major(cfgV)) out.push(`node_modules/next: installed next ${nextV} (major ${major(nextV)}) != eslint-config-next ${cfgV} (major ${major(cfgV)}); the majors must match (fix: npm i next@${major(cfgV)})`);
+  }
   return out;
 }
 

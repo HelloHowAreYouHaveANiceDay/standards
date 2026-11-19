@@ -19,7 +19,7 @@ const FLOATING = "export async function save(): Promise<void> {}\n\nexport funct
 
 export const fixture = {
   id: 'next-ts',
-  profiles: ['base@1.0.0', 'next-ts@1.0.0'],
+  profiles: ['base@1.0.0', 'next-ts@1.0.1'],
   files: {
     '.gitignore': 'node_modules/\n.next/\nnext-env.d.ts\ntsconfig.tsbuildinfo\n',
     'package.json': `${JSON.stringify(pkg, null, 2)}\n`,
@@ -56,6 +56,13 @@ export const fixture = {
     const r = h.check();
     h.step(r.code === 1 && /FAIL \[next-ts\/pins\] package\.json: eslint is "\^10\.0\.0", the profile pins exactly "10\.14\.0"/.test(r.out), 'a drifted pin fails the pins step', r.out);
     fs.writeFileSync(pj, orig);
+    const nj = path.join(dir, 'node_modules', 'next', 'package.json');
+    const nOrig = fs.readFileSync(nj);
+    const np = JSON.parse(nOrig); np.version = '15.5.0';
+    fs.writeFileSync(nj, JSON.stringify(np));
+    const mm = h.check();
+    h.step(mm.code === 1 && /FAIL \[next-ts\/pins\] node_modules\/next: installed next 15\.5\.0 \(major 15\) != eslint-config-next 16\.4\.6 \(major 16\)/.test(mm.out), 'next major != eslint-config-next major fails the pins step', mm.out);
+    fs.writeFileSync(nj, nOrig);
     const again = h.check();
     h.step(again.code === 0, 'check.mjs passes again after the injections are removed', again.out);
   },
