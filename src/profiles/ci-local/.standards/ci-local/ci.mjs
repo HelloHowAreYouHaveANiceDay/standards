@@ -24,7 +24,9 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.3.1';
+export const VERSION = '1.4.0';
+// Files whose change needs the human ci-manifest-approved label (manifest-changed).
+const TRUST_PATHS = ['.standards/ci-local/allowed_signers.org', '.standards/ci-local/ci.mjs', '.github'];
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -469,12 +471,13 @@ export function verifyCore(o, cwd) {
   const mErr = validateManifest(head);
   if (mErr.length) { fail('manifest-invalid', mErr[0]); return done(); }
 
-  // fail closed when CI-relevant files differ from the default branch (label ci-manifest-approved = --approved)
+  // fail closed when TRUST files differ from the default branch (label ci-manifest-approved = --approved). 1.4.0: only the
+  // files that decide who/what is trusted; ci/** (suites, scripts) and the other ci-local files no longer need the label.
   let defManifest = null;
   if (defRef) {
     try { defManifest = readManifestAt(cwd, defRef); } catch { /* a broken default manifest counts as absent */ }
-    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', 'ci', '.standards/ci-local', '.github']);
-    if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (needs the human ci-manifest-approved label)`);
+    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', ...TRUST_PATHS]);
+    if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (trust file: signers, ci.mjs or workflows; needs the human ci-manifest-approved label)`);
   }
   // os_required: "any" = every verified record counts, one passing record suffices; a list = all-of (each OS needs a record).
   const osSpec = o.os ? [o.os] : (defManifest?.os_required ?? head.os_required);
