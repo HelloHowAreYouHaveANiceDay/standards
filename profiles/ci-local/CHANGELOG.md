@@ -5,6 +5,15 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.3.1
+
+- Enrolls the macOS builder host signer in `allowed_signers.org`: `hermes@mac1` (haus, the Mac agent; ed25519, namespace
+  `ci-result@hhay`, valid-before 20270215, fingerprint `SHA256:HPOzKO2p2GifvPQqQ5DKb8pHhRNeaF/pelIuF8s8FcY`). Spec v4
+  section 5 slice A5; owner go 2026-11-17 (bim-cli macOS release).
+- `run --checkout`: scratch-dir cleanup retries (10 x 500 ms) and only warns on failure. Before, a transient Windows
+  EPERM on `rmSync` replaced the run's result with an internal error, so nothing was published.
+- `VERSION` is 1.3.1, so a re-synced tree re-runs once.
+
 ## 1.3.0
 
 A failing record is never out-voted (spec `_design-ci/spec-builder-side-ci.v5.md` section 5, "a usable record with outcome

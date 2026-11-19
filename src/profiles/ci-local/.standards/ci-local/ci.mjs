@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.3.0';
+export const VERSION = '1.3.1';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -342,7 +342,10 @@ function runInScratchCheckout(cwd, sha, o) {
     return { exit: r.code, result: env.result };
   } finally {
     git(cwd, ['worktree', 'remove', '--force', wt]);
-    fs.rmSync(scratch, { recursive: true, force: true });
+    // Windows: a just-exited child or AV scanner can hold a handle briefly (EPERM/EBUSY). Retry, then warn:
+    // a cleanup failure must never replace the run's result.
+    try { fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 }); }
+    catch (e) { process.stderr.write(`ci: warning: scratch cleanup failed (${e.code ?? e.message}): ${scratch}\n`); }
   }
 }
 
