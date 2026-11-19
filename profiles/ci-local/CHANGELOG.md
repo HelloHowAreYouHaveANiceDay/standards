@@ -5,6 +5,19 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.4.0
+
+`verify` fails `manifest-changed` only for TRUST files, not for any diff under `ci`, `.standards/ci-local` or `.github`.
+Owner decision (libo, 2026-11-19): the light gate. Routine changes (`ci/suites.json`, `ci/scripts/**`, a ci-local bump that
+only touches templates or `check.json`) no longer wait on a human label.
+
+- `manifest-changed` now watches `.standards/ci-local/allowed_signers.org`, `.standards/ci-local/ci.mjs` and
+  `.github/**` only. A diff there still needs the human `ci-manifest-approved` label (`--approved`); the fail message
+  names the trust-file scope. The factory's actor check on that label is unchanged.
+- Tests: a suites.json-only diff passes without `--approved`; an `allowed_signers.org`, `ci.mjs` or workflow diff fails
+  without it.
+- Manifest schema, record schema and `allowed_signers.org` unchanged. `VERSION` is 1.4.0, so a re-synced tree re-runs once.
+
 ## 1.3.1
 
 - Enrolls the macOS builder host signer in `allowed_signers.org`: `hermes@mac1` (haus, the Mac agent; ed25519, namespace

@@ -1,4 +1,4 @@
-// ci-local 1.3.0: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
+// ci-local: run / sign / publish / verify / status / check-manifest against fixture repos with a throwaway
 // ed25519 key. Every failure mode asserts a NAMED reason. ssh-keygen -Y and git are real; nothing touches GitHub
 // (status POSTs go to a local http server). os_required "any" and the all-of list are also covered on SIMULATED
 // linux / macos / windows records (signed with the fixture key), because CI runs on one host OS at a time.
@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.3.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.4.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -469,20 +469,31 @@ test('lint: in all-of mode a suite os outside os_required is refused (no host co
   assert.match(t.result.findings.join('\n'), /toolchain_os: unknown OS "beos"/); assert.match(t.result.findings.join('\n'), /toolchain_os\.linux\.nope: no built-in probe/);
 });
 
-test('fail closed: a head that changes ci/suites.json or ci/scripts/** fails manifest-changed unless approved', () => {
+test('manifest-changed gates TRUST files only: signers, ci.mjs, workflows need --approved; suites.json and ci/scripts do not', () => {
+  // suites.json-only diff passes without --approved
   let repo = fixture();
   let sha = branch(repo, 'feat', { 'ci/suites.json': manifest({ suites: [{ id: 'unit', run: [node('process.exit(0)')], required: false, os: 'any' }] }) });
   publish(repo, sha);
   let v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.ok(reasons(v).includes('manifest-changed')); assert.match(v.result.reasons[0].detail, /ci\/suites\.json/);
-  assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+  assert.equal(v.code, 0, JSON.stringify(v.result)); assert.ok(!reasons(v).includes('manifest-changed'));
 
+  // ci/scripts/** and a non-trust ci-local file (a template) pass too
   repo = fixture({ man: anyManifest() });
-  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n' });
+  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n', '.standards/ci-local/templates/x.md': 'doc\n' });
   simulate(repo, sha, 'linux');
-  v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']); assert.match(v.result.reasons[0].detail, /ci\/scripts\/secret-scan\.mjs/);
-  assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+  assert.equal(ci(repo, ['verify', '--sha', sha]).code, 0);
+
+  // each trust file fails closed without --approved, passes with it
+  const trust = { 'allowed_signers.org': ['.standards/ci-local/allowed_signers.org', signers() + '# edit\n'], 'ci.mjs': ['.standards/ci-local/ci.mjs', fs.readFileSync(CI_SRC, 'utf8') + '\n// edit\n'], 'workflow': ['.github/workflows/ci.yml', 'name: x\n'] };
+  for (const [label, [file, content]] of Object.entries(trust)) {
+    repo = fixture({ man: anyManifest() });
+    sha = branch(repo, 'feat', { [file]: content });
+    simulate(repo, sha, 'linux');
+    v = ci(repo, ['verify', '--sha', sha]);
+    assert.equal(v.code, 1, label); assert.ok(reasons(v).includes('manifest-changed'), `${label}: ${reasons(v).join()}`);
+    assert.ok(v.result.reasons.find((r) => r.code === 'manifest-changed').detail.includes(file), label);
+    assert.ok(!reasons(ci(repo, ['verify', '--sha', sha, '--approved'])).includes('manifest-changed'), label);
+  }
 });
 
 test('run refuses a dirty or non-detached checkout and an invalid manifest', () => {
