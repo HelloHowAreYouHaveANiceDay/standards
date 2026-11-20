@@ -1,0 +1,13 @@
+7b976f39eb3885238a2cb85b6028855e33ae5fbe46ec6e15039ffe3b9a418417  .standards/ui-kit/RULES.md
+2aeacb683d156ca9d71249c51f60806f8151c2dfd6389af08a0e5d057444b8c7  .standards/ui-kit/check.json
+3cd61869e9d68145902c3537c06600063b2fce11a0650befbbacd0fc26e78611  .standards/ui-kit/contract.json
+184cc9e0d973ceeb133460e793096048dc5bb9440d9b63bdad7f26260055de18  .standards/ui-kit/contrast.mjs
+ede1cee97b4b88a498fc3c22dc36d18b2fea95a30fe5614316a636f0f25b34cf  .standards/ui-kit/lint.mjs
+b51787f7157a2c5c884b2a4b34f3e3af3a7cdce19611bfbfb6ee8613fa30da34  .standards/ui-kit/placeholder-rasters.mjs
+6d16895807a732f782a30abb663c0a08265ec00a68494a7e2bb0fd51699d4d59  .standards/ui-kit/templates/pack/DESIGN.md
+14e872edf2c1cfab8439073c2a4ea744f555069d8141063adcf4a53498b54098  .standards/ui-kit/templates/pack/base.css
+d78b91d6385181c364cc8055e6a55b194b089585fb6c323c463de0a1fc4a322f  .standards/ui-kit/templates/pack/brand/mark-mono.svg
+ab159b916242c638d181272ee1b2b7f5e8f5890af22e4100e9734f16e9b24cfa  .standards/ui-kit/templates/pack/brand/mark.svg
+212bb655bdea7674f9ca35bc9aa7bb794f1c5b55fa7ceb94b175d58ed7d9decd  .standards/ui-kit/templates/pack/pack.json
+74a0e76aa70a3b3837ff966358ec31a14fcea4d67baaa9708ef175f1faa9e9d8  .standards/ui-kit/templates/pack/tokens.css
+3d9e4d7376b4777e7644b676f67254dc610a907ae27c7f4a0bea5becd576ba7e  .standards/ui-kit/ui-gen.mjs

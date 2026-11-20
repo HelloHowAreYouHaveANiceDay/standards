@@ -25,11 +25,24 @@ function repo(files) {
   return r;
 }
 const tpl = (n) => fs.readFileSync(path.join(TPL, n), 'utf8');
+// 1.2.0 template ships a brand set (placeholder SVGs + a brand block); fill it in so the template stays a clean pack
+const HAS_BRAND = fs.existsSync(path.join(TPL, 'brand/mark.svg'));
+const pr = HAS_BRAND ? await import(pathToFileURL(path.join(SK, 'placeholder-rasters.mjs')).href) : null;
+const brandFiles = () => (HAS_BRAND ? {
+  'design/brand/mark.svg': tpl('brand/mark.svg'),
+  'design/brand/mark-mono.svg': tpl('brand/mark-mono.svg'),
+  'design/brand/favicon.ico': pr.ico(32, [0x40, 0x40, 0x40]),
+  'design/brand/apple-touch-icon.png': pr.png(180, 180, [0x40, 0x40, 0x40]),
+  'design/brand/icon-192.png': pr.png(192, 192, [0x40, 0x40, 0x40]),
+  'design/brand/icon-512.png': pr.png(512, 512, [0x40, 0x40, 0x40]),
+  'design/brand/og.png': pr.png(1200, 630, [0x40, 0x40, 0x40]),
+} : {});
 const tplFiles = (over = {}) => ({
-  'design/pack.json': tpl('pack.json').replace('"pack": ""', '"pack": "demo"').replace('"prefix": ""', '"prefix": "dm"'),
+  'design/pack.json': tpl('pack.json').replace('"pack": ""', '"pack": "demo"').replace('"prefix": ""', '"prefix": "dm"').replace('"name": ""', '"name": "demo"'),
   'design/tokens.css': tpl('tokens.css').replaceAll('--tpl-', '--dm-'),
   'design/base.css': tpl('base.css'),
   'src/app.css': '.a { color: var(--ui-color-text); }\n',
+  ...brandFiles(),
   ...over,
 });
 const run = (over) => l.lint(repo(tplFiles(over)));
@@ -199,7 +212,7 @@ test('converging pack: vendored folder checks, spot-only own tokens, themes inhe
     ...over,
   });
   const found = l.lint(repo(files()));
-  assert.deepEqual(found.map(l.format), []);
+  assert.deepEqual(found.map((f) => `${f.level} ${f.rule}`), HAS_BRAND ? ['WARN UK9'] : [], 'only the missing-brand WARN (1.2.0)');
   assert.ok(at(l.lint(repo(files({ [`${V}/extra.css`]: 'x' }))), 'FAIL', 'UK1', /extra\.css: is not listed in SHA256SUMS/));
   assert.ok(at(l.lint(repo(files({ [`${V}/base.css`]: `${base}/* edit */\n` }))), 'FAIL', 'UK1', /base\.css: does not match SHA256SUMS/));
   assert.ok(at(l.lint(repo(files({ [`${V}/SHA256SUMS`]: '' }))), 'FAIL', 'UK1', /tokens\.css: is not listed in SHA256SUMS/));

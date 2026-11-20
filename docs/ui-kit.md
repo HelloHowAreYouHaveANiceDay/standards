@@ -114,6 +114,37 @@ command = "node ../.standards/ui-kit/ui-gen.mjs .. --out dist-ui"
 - A converging property publishes its page from its own `design/` (the vendored Broadsheet plus its spot), so the page
   shows Broadsheet with that property's spot colour. Broadsheet's own page is served from bimisland `apps/ui`.
 
+## 6b. Brand and logo (ui-kit 1.2.0, UK9-UK12)
+
+Brand is a layer on the same pack, not a separate profile. Every property keeps its own brand; the org sets the rules
+below and one brand-book shape (RULES.md "Brand"; wiki `projects/spec--brand-standard.md`). `ui-gen.mjs` renders the
+property's `brand.html` from the real files, and that page is what the owner reviews.
+
+### Org misuse list (R7), rendered on every brand page
+
+Never: stretch or squash the mark; rotate or tilt it; outline it; add shadows, glows or gradients; place it inside
+another shape; use a colour outside the pack tokens; put it on a busy or low-contrast background; redraw or retype it;
+set it inside a sentence. A property lists only its own extra don'ts under `## Logo` in DESIGN.md.
+
+### Review rubric (not lintable)
+
+Every new or changed mark, spot colour or name needs libo or pyline's approval on the generated brand page. An Opus
+design card proposes two directions (each as `design/brand/` files plus `brand.html`, screenshots in the PR); the owner
+picks one; a Sonnet card applies it. Judge it by:
+
+1. Does the mark read at 16px?
+2. Does it work in one colour?
+3. Is it unique within the category? Search competitors' marks; uniqueness matters more than fame.
+4. Is it built from a stated grid or simple shapes?
+5. Is it free of look-alikes to a well-known mark?
+6. Does it match the property's voice (plain, warm, quiet; the name cased exactly as in `brand.name`)?
+
+Codifying an existing mark (moving files into `design/brand/` and recolouring to token values with no visible change)
+needs no review; its PR carries before/after screenshots of the header and favicon. Images use the property's own
+screenshots, data and diagrams, never a third party's mark; the og image is 1200x630 with the mark or lockup and the page
+title in pack colours. Each property names 1-3 distinctive assets in `brand.assets` and keeps them; changing one needs an
+evidence-based reason and an owner decision.
+
 ## 7. Sources
 
 WCAG 2.2 (1.4.1, 1.4.3, 1.4.11, 2.3.3, 2.4.7, 2.4.13, 2.5.5, 2.5.8); Broadsheet design decisions D2-D7; naming shapes follow

@@ -12,6 +12,23 @@ What the property looks like and why: palette, faces, radius, density, elevation
 
 How the product writes: tone, person, words it uses and avoids. A few real examples.
 
+## Logo
+
+What the mark is, its construction grid in one line, and any don'ts that belong to this property alone. The org misuse
+list (stretching, rotating, outlines, shadows, gradients, off-token colours, busy backgrounds, redrawing) is already
+rendered on the generated brand page. Masters live in `design/brand/`; clear space and minimum size are in the `brand`
+block of `pack.json`.
+
+## Imagery
+
+What images the property uses (its own screenshots, data, diagrams) and what it never does (no third-party marks cropped
+or tinted). The share image is 1200x630 with the mark or lockup and the page title, in pack colours only.
+
+## Assets
+
+The 1-3 distinctive assets named in `brand.assets` (the mark, the spot colour, a phrase) and why each was chosen.
+Changing one needs an evidence-based reason and an owner decision.
+
 ## Budgets
 
 The numbers in `pack.json` `budgets`: how many distinct colours (`inks`) and font sizes (`sizes`) the pack allows

@@ -35,5 +35,16 @@
     { "fg": "spot", "bg": "background", "min": 3 },
     { "fg": "focus", "bg": "background", "min": 3 }
   ],
-  "extensionInk": { "suffixes": ["ink", "text"], "bg": "background", "min": 4.5 }
+  "extensionInk": { "suffixes": ["ink", "text"], "bg": "background", "min": 4.5 },
+  "brand": {
+    "dir": "design/brand",
+    "required": ["mark.svg", "mark-mono.svg", "favicon.ico", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "og.png"],
+    "optional": ["logo.svg", "logo-mono.svg"],
+    "clearspace": { "min": 0.25, "max": 1, "default": 0.5 },
+    "minPx": 16,
+    "svgBannedElements": ["script", "foreignobject", "image", "text"],
+    "pngSizes": [["apple-touch-icon.png", 180, 180], ["icon-192.png", 192, 192], ["icon-512.png", 512, 512], ["og.png", 1200, 630]],
+    "icoSize": 32,
+    "logoContrastMin": 3
+  }
 }
