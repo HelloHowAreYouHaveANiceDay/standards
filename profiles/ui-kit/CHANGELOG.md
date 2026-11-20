@@ -4,6 +4,11 @@ The org UI design standard: one shared token contract (role names, WCAG AA floor
 targets, a 4px grid) and a naming standard, applied to every property's own brand pack (spec: wiki
 `projects/spec--ui-design-standard.md`). `lint.mjs` rules UK1-UK8 read the follower's `design/pack.json`. Pairs with base.
 
+## 1.1.1
+
+- `ui-gen.mjs` `<title>` used a non-ASCII middle dot; it now emits `&middot;`. Every vendored ui-kit file is pure ASCII (kit test `profile-ui-kit-ascii`), because followers run ASCII-only tests over the repo.
+- `scripts/rename-tokens.mjs` (kit script, not vendored) accepts `"unprefixed"` / `"unprefixedKeep"` tables for own-pack followers whose names predate prefixes (`--ink`, `--bg`): exact-name renames, and any other declared unprefixed name is refused.
+
 ## 1.1.0
 
 - New `ui-gen.mjs`: zero-dep generator for the `ui.<domain>` page (`dist-ui/`): colour swatches with per-theme contrast of the contract pairs, type/space/radius/size/shadow tokens, focus and reduced-motion demo, base elements, extension roles, Voice and Look from `DESIGN.md`, optional Storybook link, theme toggle when the pack declares dark.

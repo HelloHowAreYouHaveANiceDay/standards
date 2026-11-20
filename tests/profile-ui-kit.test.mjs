@@ -265,3 +265,37 @@ test('rename-tokens: skips vendored, build and node_modules paths; --include nar
   assert.equal(codemod.main(['--table', table(), '--root', r], (s) => lines.push(s)), 0);
   assert.match(lines.at(-1), /2 name\(s\) in 2 file\(s\)/);
 });
+
+// ---- unprefixed pre-pass (1.1.1) ----
+const UN = { pack: 'own', unprefixed: { '--ink': '--ui-color-text', '--surface': '--ui-color-surface' }, unprefixedKeep: ['--brand'] };
+
+test('rename-tokens: unprefixed names are renamed by exact match only (--ink-soft untouched), a second run is a no-op', () => {
+  const r = repo({ 'a.css': ':root { --ink: #111; --surface: #fff; --brand: red; --ink-soft: #444; }\n.a { color: var(--ink); background: var(--surface, #fff); border-color: var(--ink-soft); }\n', 'b.html': '<i style="color: var(--ink)">\n' });
+  const T = table({ ...UN, unprefixedKeep: ['--brand', '--ink-soft'] });
+  assert.equal(codemod.main(['--table', T, '--root', r, '--write'], () => {}), 0);
+  assert.equal(fs.readFileSync(path.join(r, 'a.css'), 'utf8'), ':root { --ui-color-text: #111; --ui-color-surface: #fff; --brand: red; --ink-soft: #444; }\n.a { color: var(--ui-color-text); background: var(--ui-color-surface, #fff); border-color: var(--ink-soft); }\n');
+  assert.equal(fs.readFileSync(path.join(r, 'b.html'), 'utf8'), '<i style="color: var(--ui-color-text)">\n');
+  const again = [];
+  assert.equal(codemod.main(['--table', T, '--root', r, '--write'], (s) => again.push(s)), 0);
+  assert.match(again.at(-1), /rewrote 0 name\(s\) in 0 file\(s\)/);
+});
+
+test('rename-tokens: an unlisted declared unprefixed name is refused and nothing is written', () => {
+  const r = repo({ 'a.css': ':root { --ink: #111; --muted: #666; }\n.a { color: var(--ink); }\n' });
+  const lines = [];
+  assert.equal(codemod.main(['--table', table(UN), '--root', r, '--write'], (s) => lines.push(s)), 1);
+  assert.match(lines.join('\n'), /refused: 1 unprefixed name\(s\)/);
+  assert.match(lines.join('\n'), /--muted {2}\(1x, first a\.css:1\)/);
+  assert.match(fs.readFileSync(path.join(r, 'a.css'), 'utf8'), /--ink: #111/, 'nothing written');
+});
+
+test('rename-tokens: unprefixed table validation and combination with a prefix table', () => {
+  const bad = (t, re) => { const lines = []; assert.equal(codemod.main(['--table', table(t), '--root', tmpdir('uk-e-')], (s) => lines.push(s)), 2); assert.match(lines.join('\n'), re); };
+  bad({ unprefixed: { '--ink': '--ink2' } }, /the new name must be/);
+  bad({ unprefixed: { '--ui-color-a': '--ui-color-b' } }, /must be a plain old name/);
+  bad({ unprefixed: { '--ink': '--ui-color-text' }, unprefixedKeep: ['--ink'] }, /both renamed and kept/);
+  bad({ unprefixed: {}, unprefixedKeep: [] }, /"map" must be a non-empty/);
+  const r = repo({ 'a.css': '.a { color: var(--ink); background: var(--bk-bg); }\n' });
+  assert.equal(codemod.main(['--table', table({ ...TABLE, map: { '--bk-bg': '--ui-color-background' }, keep: [], unprefixed: { '--ink': '--ui-color-text' } }), '--root', r, '--write'], () => {}), 0);
+  assert.equal(fs.readFileSync(path.join(r, 'a.css'), 'utf8'), '.a { color: var(--ui-color-text); background: var(--ui-color-background); }\n');
+});

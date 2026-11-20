@@ -150,7 +150,7 @@ export function buildPage(model, { design = '', root = '' } = {}) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="${themeNames.includes('dark') ? 'light dark' : 'light'}">
-<title>${esc(title)} · design pack ${esc(pk.version)}</title>
+<title>${esc(title)} &middot; design pack ${esc(pk.version)}</title>
 <link rel="stylesheet" href="pack.css">
 <link rel="stylesheet" href="ui.css">
 </head>
