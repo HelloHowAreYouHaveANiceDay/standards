@@ -67,7 +67,54 @@ Each property has its own pack unless it is listed as converging on Broadsheet (
 timeandmaterials. The portfolio list lives in the spec (section H); a pack is published for a second property only when a
 second property adopts it. Who writes a new look: one design card per property, when it is next worked on.
 
-## 6. Sources
+## 6. Publishing ui.<domain>
+
+Every property gets `ui.<its domain>`: a static page of its own pack, not a Storybook. Generate it with the kit's
+zero-dep `.standards/ui-kit/ui-gen.mjs` (ui-kit 1.1.0), which reads `design/pack.json`, the token files and
+`design/DESIGN.md`:
+
+```
+node .standards/ui-kit/ui-gen.mjs            # writes dist-ui/{index.html,pack.css,ui.css}
+node .standards/ui-kit/ui-gen.mjs . --out build/ui
+```
+
+The page shows every `--ui-color-*` role as a swatch with the contrast of each contract pair in every declared theme
+(computed by the same `contrast.mjs` function lint rule UK3 uses, so the page cannot show a pass the lint fails), the
+type, space, radius, size and shadow tokens, a focus-ring demo and the reduced-motion note, the base elements styled by
+the pack's own `base.css`, the extension roles, `## Voice` and `## Look` from `DESIGN.md`, a link to the optional
+`"storybook"` URL in `pack.json` (an `https` URL; real Storybook stays only where a component library exists), and a
+light/dark toggle when a non-light theme is selected by `[data-theme="..."]`. The layout is identical for every
+property; only the pack's values differ. No external font or script is loaded. The one inline script is the toggle. The
+generator exits 1 while the pack fails lint (the page is still written, with FAIL rows), so run it after
+`node .standards/check.mjs`.
+
+**Deploy recipe: Cloudflare Workers static assets** (the shape of bimisland `apps/ui`). The profile writes none of
+these files; the follower adds them in its own PR.
+
+`ui/wrangler.toml`:
+
+```toml
+name = "<property>-ui"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "../dist-ui"
+
+# [build] runs before every deploy, dry-run and dev session
+[build]
+command = "node ../.standards/ui-kit/ui-gen.mjs .. --out dist-ui"
+```
+
+- Attach `ui.<domain>` once through the Cloudflare API (a custom domain on the worker), not as a `[[routes]]
+  custom_domain` block: that block re-registers on every deploy and needs Zone:Edit, which a CI deploy token lacks.
+- `workers_dev = true` serves a preview on `<name>.<account>.workers.dev` until the domain is attached.
+- CI runs `wrangler deploy` on pushes to main that touch `design/**` (and the `ui/` folder); a PR runs
+  `wrangler deploy --dry-run` so a broken pack fails before merge.
+- Check the live page after deploy: fetch `https://ui.<domain>/` and assert it contains the pack name and version.
+- A converging property publishes its page from its own `design/` (the vendored Broadsheet plus its spot), so the page
+  shows Broadsheet with that property's spot colour. Broadsheet's own page is served from bimisland `apps/ui`.
+
+## 7. Sources
 
 WCAG 2.2 (1.4.1, 1.4.3, 1.4.11, 2.3.3, 2.4.7, 2.4.13, 2.5.5, 2.5.8); Broadsheet design decisions D2-D7; naming shapes follow
 Carbon (`text-secondary`, `background-hover`), Polaris (`bg-surface-secondary-hover`) and SLDS 2 (`on-surface-2`); DTCG name
