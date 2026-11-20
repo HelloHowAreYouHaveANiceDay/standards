@@ -1,0 +1,39 @@
+{
+  "contract": "ui-kit",
+  "version": "1.0.0",
+  "reservedPrefix": "ui",
+  "categories": ["color", "font", "font-size", "space", "size", "radius", "shadow"],
+  "variants": ["muted", "subtle", "strong"],
+  "states": ["hover", "active", "selected", "disabled"],
+  "required": {
+    "color": ["background", "panel", "text", "text-muted", "line", "border", "primary", "on-primary", "alert", "on-alert", "spot", "focus"],
+    "font": ["sans"],
+    "space": ["1", "2", "3", "4", "5", "6"],
+    "size": ["touch-min", "focus-ring"]
+  },
+  "optional": ["font-serif", "font-mono"],
+  "known": {
+    "color": { "roles": ["background", "panel", "text", "line", "border", "primary", "on-primary", "alert", "on-alert", "spot", "focus"] },
+    "font": { "roles": ["sans", "serif", "mono"] },
+    "size": { "roles": ["touch-min", "focus-ring"] },
+    "font-size": { "open": true },
+    "space": { "open": true },
+    "radius": { "open": true },
+    "shadow": { "open": true }
+  },
+  "floors": { "unit": 4, "touchMinPx": 44, "focusRingPx": 2 },
+  "pairs": [
+    { "fg": "text", "bg": "background", "min": 4.5 },
+    { "fg": "text", "bg": "panel", "min": 4.5 },
+    { "fg": "text-muted", "bg": "background", "min": 4.5 },
+    { "fg": "text-muted", "bg": "panel", "min": 4.5 },
+    { "fg": "border", "bg": "background", "min": 3 },
+    { "fg": "on-primary", "bg": "primary", "min": 4.5 },
+    { "fg": "primary", "bg": "background", "min": 3 },
+    { "fg": "on-alert", "bg": "alert", "min": 4.5 },
+    { "fg": "alert", "bg": "background", "min": 4.5 },
+    { "fg": "spot", "bg": "background", "min": 3 },
+    { "fg": "focus", "bg": "background", "min": 3 }
+  ],
+  "extensionInk": { "suffixes": ["ink", "text"], "bg": "background", "min": 4.5 }
+}

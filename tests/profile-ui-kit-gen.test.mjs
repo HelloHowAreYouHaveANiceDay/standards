@@ -9,7 +9,7 @@ import { KIT_ROOT, tmpdir, git } from './helpers.mjs';
 import { fixture as own } from './fixtures/ui-kit.mjs';
 import { fixture as conv } from './fixtures/ui-kit-converging.mjs';
 
-const DIR = process.env.UI_KIT_SRC ? path.join(KIT_ROOT, 'src/profiles/ui-kit') : path.join(KIT_ROOT, 'profiles/ui-kit/1.1.0');
+const DIR = process.env.UI_KIT_SRC ? path.join(KIT_ROOT, 'src/profiles/ui-kit') : path.join(KIT_ROOT, 'profiles/ui-kit/1.1.1');
 const SK = path.join(DIR, '.standards/ui-kit');
 const l = await import(pathToFileURL(path.join(SK, 'lint.mjs')).href);
 const g = await import(pathToFileURL(path.join(SK, 'ui-gen.mjs')).href);

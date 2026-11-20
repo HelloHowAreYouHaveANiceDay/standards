@@ -1,0 +1,10 @@
+85824db176f93a812bcb889b078bad8e63644703db77330cbdd0b2f80a0946d8  .standards/ui-kit/RULES.md
+8f3ce9b386a11558bf846a065dc5ce07373861ec2363d66e8245bd3e011c1fdb  .standards/ui-kit/check.json
+017ae70594cc2ae47c562d791ab67307c97587f780ddd9c9392865d920f46d88  .standards/ui-kit/contract.json
+184cc9e0d973ceeb133460e793096048dc5bb9440d9b63bdad7f26260055de18  .standards/ui-kit/contrast.mjs
+0e401fa155838cd346f015b3b48dbc421f4c3e0f5015bba88679ab71fd783717  .standards/ui-kit/lint.mjs
+4007c302091a613936bcba5a8cadd6b554df6cc1a8348931357df3df72fc09f4  .standards/ui-kit/templates/pack/DESIGN.md
+14e872edf2c1cfab8439073c2a4ea744f555069d8141063adcf4a53498b54098  .standards/ui-kit/templates/pack/base.css
+72b91bd0b53d1ee862373a837505a48ad4af10fd4486ad494eb39998d2f0eee3  .standards/ui-kit/templates/pack/pack.json
+74a0e76aa70a3b3837ff966358ec31a14fcea4d67baaa9708ef175f1faa9e9d8  .standards/ui-kit/templates/pack/tokens.css
+596e960f510b5511b6ffdec1df0e62c9d41e73176dad74e71e021e81608b1c86  .standards/ui-kit/ui-gen.mjs
