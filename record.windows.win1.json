@@ -2,7 +2,7 @@
   "schema": "ci-record/1",
   "key": "6cca0d0e190ba2c06b96e1edbb31d746e9a5fa65ad8a95aa8f0a01f4ade36bd6",
   "tree": "f65bb99370a1d23b3b375a11f8dea599e5dfe136",
-  "commit": "0652c3ef3d0f3540e7d327f6eb14ad07d7154fde",
+  "commit": "7cd292be7480445b37b5afa5fb8065ff3d058bb4",
   "base": "c090a56c60b511934cfcc4319dee361f3886649f",
   "ci_local_version": "1.3.0",
   "toolchain": {
@@ -17,7 +17,7 @@
   "os": "windows",
   "host": "DESKTOP-E3QEBQB",
   "signer": "hermes@win1",
-  "created": "2026-11-20T20:33:59Z",
+  "created": "2026-11-20T20:46:00Z",
   "outcome": "pass",
   "reason": null,
   "suites": [
@@ -32,21 +32,21 @@
       "id": "kit-sums",
       "required": true,
       "status": "passed",
-      "duration_s": 1.9,
-      "log_sha256": "c4e66698057c20ff25479532769d0fea7b31e1b671a96877179d00863bdf6dc1"
+      "duration_s": 3.9,
+      "log_sha256": "b8305609c6b2f73af81596d98ac5f40b7a5ba852ebc7ceb9a6eae448d5924dda"
     },
     {
       "id": "unit",
       "required": true,
       "status": "passed",
-      "duration_s": 200.2,
-      "log_sha256": "69dd8026dfc385b322f91a04d6addaafcb23d0033cea6ab54f091ca7a85eefb4"
+      "duration_s": 279.7,
+      "log_sha256": "bb5d85a47524900231abe20a94d7f9f284f4ee94e5528ed6ea1bf1f00a8fc50e"
     },
     {
       "id": "fixture-sync",
       "required": true,
       "status": "passed",
-      "duration_s": 461,
+      "duration_s": 433.6,
       "log_sha256": "b5bc4e85e573299092c64338f0a8625da8784dd9ff6a2f810d1ddcbba100a61c"
     }
   ]
