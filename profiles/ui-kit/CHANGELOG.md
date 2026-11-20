@@ -12,6 +12,12 @@ targets, a 4px grid) and a naming standard, applied to every property's own bran
 - `templates/pack/` gains `brand/mark.svg` and `brand/mark-mono.svg` (neutral circle) and a `brand` block in `pack.json`; DESIGN.md template gains `## Logo`, `## Imagery`, `## Assets`. New `placeholder-rasters.mjs` writes neutral placeholder rasters (a profile never vendors binary files, so they are generated, not shipped).
 - `docs/ui-kit.md` section 6b: the org misuse list and the brand review rubric. RULES.md: `## Brand (UK9-UK12)`.
 
+## 1.1.2
+
+- `pack.json` gains `hostSet: ["size-range-steps"]`: roles the pack documents as host-set (Broadsheet `--ui-size-range-steps`, set per range input). UK8 allows `sources` to declare or `setProperty()` only those `--ui-*` names; every other public name is still refused.
+- `pack.json` gains `exclude: [globs]` applied to `sources` for UK5 and UK8; default `**/*.test.*`, `**/*.spec.*`, `**/__fixtures__/**` (setting it replaces the default).
+- Not a kit change: a Broadsheet ghost button cannot turn off its hover tint. That is a Broadsheet (bimisland `packages/broadsheet`) issue.
+
 ## 1.1.1
 
 - `ui-gen.mjs` `<title>` used a non-ASCII middle dot; it now emits `&middot;`. Every vendored ui-kit file is pure ASCII (kit test `profile-ui-kit-ascii`), because followers run ASCII-only tests over the repo.
