@@ -1,0 +1,33 @@
+/* Focus and motion floors every pack ships (ui-kit UK6, UK7). Element defaults go below. */
+:focus-visible {
+  outline: var(--ui-size-focus-ring) solid var(--ui-color-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  a.button {
+    min-height: var(--ui-size-touch-min);
+  }
+}
+
+body {
+  background: var(--ui-color-background);
+  color: var(--ui-color-text);
+  font-family: var(--ui-font-sans);
+}
