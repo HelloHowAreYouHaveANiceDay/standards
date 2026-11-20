@@ -2,7 +2,9 @@
 // Vendored by HelloHowAreYouHaveANiceDay/standards (profile ui-kit); do not edit -- re-run sync.
 // Zero dependencies, offline. Checks a repo's UI design pack against the org contract (contract.json): pack manifest and
 // vendored files (UK1), required roles and 4px/touch/focus floors (UK2), WCAG AA contrast pairs (UK3), ink and type-size
-// budgets (UK4), colour literals outside the pack (UK5), visible focus (UK6), reduced motion (UK7), token naming (UK8).
+// budgets (UK4), colour literals outside the pack (UK5), visible focus (UK6), reduced motion (UK7), token naming (UK8),
+// the brand book (UK9 brand block + required files, UK10 SVG hygiene + logo colours = pack tokens, UK11 raster sizes,
+// UK12 served copies byte-equal to design/brand/ masters).
 // Rules: RULES.md here; standard text: the kit's docs/ui-kit.md.
 //
 //   node .standards/ui-kit/lint.mjs [repo-root]
@@ -281,6 +283,167 @@ export function checkPublicName(name, exts) {
   return `"${cat}-${rest}" is not a standard role and no entry of "extensions" in pack.json declares it`;
 }
 
+// ---------- brand book (UK9-UK12) ----------
+const BR = CONTRACT.brand;
+const BRAND_DIR = BR.dir;
+const SVG_BAN = new Set(BR.svgBannedElements);
+
+// Tiny XML tokenizer: well-formedness (tags nest and close, one root), element names and attributes. No entities, no DTD.
+export function xmlElements(text) {
+  const els = [];
+  const stack = [];
+  let rootSeen = false, i = 0;
+  const TAG = /<(\/?)([A-Za-z_][\w:.-]*)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
+  if (/<!ENTITY|<!DOCTYPE[^>]*\[/i.test(text)) return { error: 'declares entities or an internal DTD' };
+  while (i < text.length) {
+    const lt = text.indexOf('<', i);
+    if (lt < 0) { if (text.slice(i).trim() && !stack.length) return { error: 'text outside the root element' }; break; }
+    if (text.slice(i, lt).trim() && !stack.length) return { error: 'text outside the root element' };
+    if (text.startsWith('<!--', lt)) { const e = text.indexOf('-->', lt + 4); if (e < 0) return { error: 'unterminated comment' }; i = e + 3; continue; }
+    if (text.startsWith('<?', lt)) { const e = text.indexOf('?>', lt + 2); if (e < 0) return { error: 'unterminated processing instruction' }; i = e + 2; continue; }
+    if (text.startsWith('<![CDATA[', lt)) { const e = text.indexOf(']]>', lt + 9); if (e < 0) return { error: 'unterminated CDATA' }; i = e + 3; continue; }
+    if (text.startsWith('<!', lt)) { const e = text.indexOf('>', lt + 2); if (e < 0) return { error: 'unterminated declaration' }; i = e + 1; continue; }
+    TAG.lastIndex = lt;
+    const m = TAG.exec(text);
+    if (!m) return { error: `malformed tag near line ${lineOf(text, lt)}` };
+    const [all, close, name, attrText, self] = m;
+    i = lt + all.length;
+    if (close) {
+      if (self || attrText.trim()) return { error: `malformed closing tag </${name}> near line ${lineOf(text, lt)}` };
+      if (stack.pop() !== name) return { error: `</${name}> closes the wrong element near line ${lineOf(text, lt)}` };
+      continue;
+    }
+    if (!stack.length) { if (rootSeen) return { error: 'more than one root element' }; rootSeen = true; }
+    const attrs = {};
+    for (const a of attrText.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) attrs[a[1]] = a[2] ?? a[3];
+    els.push({ name, attrs, line: lineOf(text, lt) });
+    if (!self) stack.push(name);
+  }
+  if (!rootSeen) return { error: 'no root element' };
+  if (stack.length) return { error: `<${stack.at(-1)}> is never closed` };
+  return { els };
+}
+
+// every fill / stroke / stop-color value an SVG sets, as attribute or CSS declaration
+export function svgPaints(text) {
+  const out = [];
+  for (const m of text.matchAll(/(?<![\w-])(fill|stroke|stop-color)\s*[:=]\s*(?:"([^"]*)"|'([^']*)'|([^;}"'\s>]+))/g)) {
+    const v = (m[2] ?? m[3] ?? m[4] ?? '').trim();
+    out.push({ prop: m[1], value: v, line: lineOf(text, m.index) });
+  }
+  return out;
+}
+
+export function pngSize(buf) {
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47 || buf.readUInt32BE(4) !== 0x0d0a1a0a || buf.toString('latin1', 12, 16) !== 'IHDR') return null;
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+
+export function icoSizes(buf) {
+  if (buf.length < 6 || buf.readUInt16LE(0) !== 0 || buf.readUInt16LE(2) !== 1) return null;
+  const n = buf.readUInt16LE(4);
+  if (n < 1 || buf.length < 6 + 16 * n) return null;
+  const out = [];
+  for (let k = 0; k < n; k++) { const o = 6 + 16 * k; out.push({ w: buf[o] || 256, h: buf[o + 1] || 256 }); }
+  return out;
+}
+
+const underBrand = (rel) => typeof rel === 'string' && !path.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..') && rel.replace(/\\/g, '/').startsWith(`${BRAND_DIR}/`);
+
+// ctx: { declared: Set of token names, colorOf(name) -> {c} | null, fail, warn }
+export function brandLint(root, pack, ctx) {
+  const { declared, colorOf, fail, warn } = ctx;
+  const PACK = 'design/pack.json';
+  const exists = (rel) => fs.existsSync(path.join(root, rel));
+  const b = pack.brand;
+  if (b === undefined) { warn('UK9', PACK, null, `no "brand" block and no ${BRAND_DIR}/ brand book`, 'add a "brand" block to pack.json and the files from .standards/ui-kit/templates/pack/brand/ (RULES.md "Brand")'); return; }
+  const bad = [];
+  if (!b || typeof b !== 'object' || Array.isArray(b)) { fail('UK9', PACK, null, '"brand" must be an object', 'see RULES.md "Brand"'); return; }
+  if (typeof b.name !== 'string' || !b.name.trim()) bad.push('brand.name is required (the display name, exact casing)');
+  const cs = b.clearspace;
+  if (cs !== undefined && !(typeof cs === 'number' && cs >= BR.clearspace.min && cs <= BR.clearspace.max)) bad.push(`brand.clearspace must be a number from ${BR.clearspace.min} to ${BR.clearspace.max} (x mark height)`);
+  if (b.min_px !== undefined && !(Number.isInteger(b.min_px) && b.min_px >= BR.minPx)) bad.push(`brand.min_px must be an integer of at least ${BR.minPx}`);
+  if (b.wordmark !== undefined && !(b.wordmark && typeof b.wordmark === 'object' && !Array.isArray(b.wordmark) && typeof b.wordmark.font === 'string' && declared.has(b.wordmark.font))) bad.push('brand.wordmark.font must name a token the pack declares (for example --ui-font-sans)');
+  let colors = [];
+  if (b.colors !== undefined && !(Array.isArray(b.colors) && b.colors.every((x) => typeof x === 'string'))) bad.push('brand.colors must be an array of token names');
+  else {
+    colors = b.colors || [];
+    for (const c of colors) if (!declared.has(c)) bad.push(`brand.colors names ${c}, which the pack does not declare`);
+  }
+  if (b.assets !== undefined && !(Array.isArray(b.assets) && b.assets.every((x) => typeof x === 'string' && x.trim()))) bad.push('brand.assets must be an array of non-empty strings');
+  let served = {};
+  if (b.served !== undefined) {
+    if (!b.served || typeof b.served !== 'object' || Array.isArray(b.served)) bad.push('brand.served must be an object { served path: master path }');
+    else {
+      served = b.served;
+      for (const [k, v] of Object.entries(served)) {
+        if (!k || path.isAbsolute(k) || k.split(/[\\/]/).includes('..')) bad.push(`brand.served key "${k}" must be a repo-relative path`);
+        if (!underBrand(v)) bad.push(`brand.served target for ${k} must be a file in ${BRAND_DIR}/`);
+      }
+    }
+  }
+  for (const p of bad) fail('UK9', PACK, null, p, 'see RULES.md "Brand"');
+  for (const f of BR.required) if (!exists(`${BRAND_DIR}/${f}`)) fail('UK9', `${BRAND_DIR}/${f}`, null, 'required brand file is missing', 'add it (templates/pack/brand/ has the placeholder SVGs; `node .standards/ui-kit/placeholder-rasters.mjs` writes placeholder rasters)');
+  if (exists(`${BRAND_DIR}/logo.svg`) && !exists(`${BRAND_DIR}/logo-mono.svg`)) fail('UK9', `${BRAND_DIR}/logo-mono.svg`, null, 'logo.svg exists, so logo-mono.svg is required', 'add the lockup drawn with fill="currentColor" only');
+
+  // UK10: SVG masters
+  const allowed = new Set();
+  for (const c of colors) { const r = colorOf(c); if (r) allowed.add(hexOf(r.c)); }
+  for (const f of ['mark.svg', 'mark-mono.svg', 'logo.svg', 'logo-mono.svg']) {
+    const rel = `${BRAND_DIR}/${f}`;
+    const text = readText(path.join(root, rel));
+    if (text === null) continue;
+    const x = xmlElements(text);
+    if (x.error) { fail('UK10', rel, null, `is not well-formed XML (${x.error})`, 'export the SVG again'); continue; }
+    const rootEl = x.els[0];
+    if (rootEl.name !== 'svg' || !rootEl.attrs.viewBox) fail('UK10', rel, rootEl.line, 'root element must be <svg> with a viewBox', 'add viewBox="0 0 <w> <h>"');
+    for (const el of x.els) {
+      if (SVG_BAN.has(el.name.toLowerCase())) fail('UK10', rel, el.line, `<${el.name}> is not allowed in a logo master`, el.name.toLowerCase() === 'text' ? 'convert the text to outlines' : 'remove it; masters are plain shapes');
+      for (const [a, v] of Object.entries(el.attrs)) {
+        if (/^on/i.test(a)) fail('UK10', rel, el.line, `event attribute ${a}`, 'remove it');
+        if (/^(xlink:)?href$/.test(a) && !v.trim().startsWith('#')) fail('UK10', rel, el.line, `external ${a}="${v.slice(0, 40)}"`, 'masters reference nothing outside the file');
+      }
+    }
+    if (/url\(\s*["']?\s*(https?:|\/\/)/i.test(text)) fail('UK10', rel, null, 'url() points outside the file', 'masters reference nothing outside the file');
+    const mono = f.includes('-mono');
+    const seen = new Set();
+    for (const p of svgPaints(text)) {
+      const v = p.value, lv = v.toLowerCase();
+      if (lv === 'none' || lv === 'currentcolor' || /^url\(\s*#/.test(lv)) continue;
+      const k = `${p.prop}:${lv}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (mono) { fail('UK10', rel, p.line, `${p.prop} is ${v}; a mono master uses only currentColor or none`, 'use currentColor'); continue; }
+      const c = parseColor(v);
+      if (!c || c.a < 1) fail('UK10', rel, p.line, `${p.prop} is ${v}; the lint cannot read it as an opaque colour of a brand.colors token`, 'use a hex equal to a token in brand.colors');
+      else if (!allowed.has(hexOf(c))) fail('UK10', rel, p.line, `${p.prop} ${hexOf(c)} is not the light-theme value of any brand.colors token${colors.length ? ` (${colors.join(', ')})` : ' (brand.colors is empty)'}`, 'recolour the mark to a pack token value, or change the token and the mark together');
+    }
+  }
+
+  // UK11: raster sizes from headers
+  for (const [f, w, h] of BR.pngSizes) {
+    const rel = `${BRAND_DIR}/${f}`;
+    if (!exists(rel)) continue;
+    const s = pngSize(fs.readFileSync(path.join(root, rel)));
+    if (!s) fail('UK11', rel, null, 'is not a PNG file', 'export a real PNG');
+    else if (s.w !== w || s.h !== h) fail('UK11', rel, null, `is ${s.w}x${s.h}; it must be ${w}x${h}`, `re-render it at ${w}x${h}`);
+  }
+  if (exists(`${BRAND_DIR}/favicon.ico`)) {
+    const sz = icoSizes(fs.readFileSync(path.join(root, `${BRAND_DIR}/favicon.ico`)));
+    if (!sz) fail('UK11', `${BRAND_DIR}/favicon.ico`, null, 'is not an ICO file', 'export a real .ico');
+    else if (!sz.some((e) => e.w === BR.icoSize && e.h === BR.icoSize)) fail('UK11', `${BRAND_DIR}/favicon.ico`, null, `has no ${BR.icoSize}x${BR.icoSize} entry (has ${sz.map((e) => `${e.w}x${e.h}`).join(', ')})`, `add a ${BR.icoSize}x${BR.icoSize} image`);
+  }
+
+  // UK12: served copies equal their masters
+  for (const [target, master] of Object.entries(served)) {
+    if (!underBrand(master) || !target || path.isAbsolute(target) || target.split(/[\\/]/).includes('..')) continue;
+    const mAbs = path.join(root, master), tAbs = path.join(root, target);
+    if (!fs.existsSync(mAbs)) continue; // UK9 already reports a missing master
+    if (!fs.existsSync(tAbs)) { fail('UK12', target, null, `is listed in brand.served but missing (master ${master})`, `copy ${master} to ${target}`); continue; }
+    if (sha256(fs.readFileSync(mAbs)) !== sha256(fs.readFileSync(tAbs))) fail('UK12', target, null, `differs from its master ${master}`, `copy ${master} over it; edit the master, never the served copy`);
+  }
+}
+
 // ---------- the lint ----------
 export function lint(root, out = {}) {
   const F = [];
@@ -458,6 +621,12 @@ export function lint(root, out = {}) {
       fail('UK8', d.file, d.line, `${d.name} is neither a public --ui-* name nor a private --${prefix}-* name`, `rename it to --ui-... (public) or --${prefix}-... (private)`);
     }
   }
+
+  // UK9-UK12: brand book
+  brandLint(root, pack, {
+    declared, fail, warn,
+    colorOf: (name) => { const v = subst(light.get(name)?.value ?? '', lk); const c = v ? parseColor(v) : null; return c && c.a === 1 ? { c } : null; },
+  });
 
   // sources
   const globs = (pack.sources || []).map(globRe);

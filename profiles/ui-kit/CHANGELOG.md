@@ -4,6 +4,14 @@ The org UI design standard: one shared token contract (role names, WCAG AA floor
 targets, a 4px grid) and a naming standard, applied to every property's own brand pack (spec: wiki
 `projects/spec--ui-design-standard.md`). `lint.mjs` rules UK1-UK8 read the follower's `design/pack.json`. Pairs with base.
 
+## 1.2.0
+
+- Brand rules UK9-UK12 in `lint.mjs` (zero-dep XML tokenizer, PNG IHDR and ICO directory readers, light-theme token resolution shared with UK2/UK3): UK9 `brand` block in `pack.json` plus required `design/brand/` files (WARN while no `brand` block exists, FAIL when present but wrong), UK10 SVG hygiene and logo colours equal to `brand.colors` tokens, UK11 raster sizes from headers, UK12 `brand.served` copies byte-equal to their masters. WARN-when-absent flips to FAIL in 2.0.0 with UK4/UK5.
+- `contract.json` gains the `brand` schema (directory, required files, clearspace and min-size bounds, PNG sizes).
+- `ui-gen.mjs` writes `brand.html` (logo on every theme with the variant R6 picks and its contrast, clear space, minimum size, colour, misuse grid from the real mark, icons, og, Logo/Imagery/Assets from DESIGN.md) and copies `design/brand/*` to `<out>/brand/` when the pack has a `brand` block; `index.html` links it. All generated output is pure ASCII (non-ASCII DESIGN.md text becomes character references).
+- `templates/pack/` gains `brand/mark.svg` and `brand/mark-mono.svg` (neutral circle) and a `brand` block in `pack.json`; DESIGN.md template gains `## Logo`, `## Imagery`, `## Assets`. New `placeholder-rasters.mjs` writes neutral placeholder rasters (a profile never vendors binary files, so they are generated, not shipped).
+- `docs/ui-kit.md` section 6b: the org misuse list and the brand review rubric. RULES.md: `## Brand (UK9-UK12)`.
+
 ## 1.1.2
 
 - `pack.json` gains `hostSet: ["size-range-steps"]`: roles the pack documents as host-set (Broadsheet `--ui-size-range-steps`, set per range input). UK8 allows `sources` to declare or `setProperty()` only those `--ui-*` names; every other public name is still refused.
