@@ -25,6 +25,7 @@ const SKIP = /(^|\/)(node_modules|\.standards|dist|build|out|\.output|\.astro|\.
 const MAX = 5_000_000;
 const CAP = 20; // findings per rule per file before "+N more"
 const MARKER = /ui-kit:\s*raw-color\s+--\s*\S/;
+const DEFAULT_EXCLUDE = ['**/*.test.*', '**/*.spec.*', '**/__fixtures__/**'];
 const SEG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const CATS = [...CONTRACT.categories].sort((a, b) => b.length - a.length);
 
@@ -198,6 +199,8 @@ function validatePack(p, { vendored }) {
   arr('base', false);
   if (p.storybook !== undefined && !(typeof p.storybook === 'string' && /^https:\/\/[^\s"'<>]+$/.test(p.storybook))) bad.push('"storybook" must be an https URL');
   arr('sources', !vendored);
+  arr('exclude', false);
+  if (p.hostSet !== undefined && (!Array.isArray(p.hostSet) || p.hostSet.some((e) => typeof e !== 'string' || !SEG.test(e)))) bad.push('"hostSet" must be an array of lowercase kebab role names (--ui-<role> that source files may set)');
   if (p.extensions !== undefined && (!Array.isArray(p.extensions) || p.extensions.some((e) => typeof e !== 'string' || !SEG.test(e)))) bad.push('"extensions" must be an array of lowercase kebab role names');
   if (p.budgets !== undefined) {
     const b = p.budgets;
@@ -458,7 +461,9 @@ export function lint(root, out = {}) {
 
   // sources
   const globs = (pack.sources || []).map(globRe);
-  const srcFiles = repoFiles(root).map(posix).filter((f) => !SKIP.test(f) && !packFiles.has(f) && globs.some((g) => g.test(f)));
+  const excl = (Array.isArray(pack.exclude) ? pack.exclude : DEFAULT_EXCLUDE).map(globRe);
+  const hostSet = new Set(Array.isArray(pack.hostSet) ? pack.hostSet.map((r) => `--ui-${r}`) : []);
+  const srcFiles = repoFiles(root).map(posix).filter((f) => !SKIP.test(f) && !packFiles.has(f) && globs.some((g) => g.test(f)) && !excl.some((g) => g.test(f)));
   const srcTexts = [];
   for (const f of srcFiles) { const t = readText(path.join(root, f)); if (t !== null) srcTexts.push({ rel: f, text: t }); }
   const allTexts = [...tokenFiles, ...baseFiles].map((f) => ({ rel: f.rel, text: f.text, pack: true })).concat(srcTexts);
@@ -471,11 +476,12 @@ export function lint(root, out = {}) {
       const n = m[1];
       if (n.startsWith('--_')) continue;
       const ln = lineOf(text, m.index);
-      if (n.startsWith('--ui-')) capAdd('FAIL', 'UK8', rel, ln, `declares ${n}; source files never declare or reassign a public name`, 'read it with var(); change the value in the pack tokens');
+      if (hostSet.has(n)) continue;
+      if (n.startsWith('--ui-')) capAdd('FAIL', 'UK8', rel, ln, `declares ${n}; source files never declare or reassign a public name`, 'read it with var(); change the value in the pack tokens, or list its role in "hostSet" when the pack documents it as host-set');
       else capAdd('FAIL', 'UK8', rel, ln, `declares custom property ${n}; source files declare only --_* locals`, `rename it --_${n.slice(2)}`);
     }
     for (const m of text.matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)) {
-      if (m[1].startsWith('--_')) continue;
+      if (m[1].startsWith('--_') || hostSet.has(m[1])) continue;
       capAdd('FAIL', 'UK8', rel, lineOf(text, m.index), `setProperty() declares ${m[1]}; source files declare only --_* locals`, `use --_${m[1].slice(2)}`);
     }
     for (const m of text.matchAll(/var\(\s*(--[\w-]+)/g)) {
