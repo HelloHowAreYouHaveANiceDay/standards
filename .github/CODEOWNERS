@@ -8,3 +8,7 @@ wrangler.toml        @HelloHowAreYouHaveANiceDay
 auth/                @HelloHowAreYouHaveANiceDay
 *secret*             @HelloHowAreYouHaveANiceDay
 migrations/          @HelloHowAreYouHaveANiceDay
+
+# release profiles (trust gate v3): profile dirs are owner-reviewed
+/profiles/ci-local/     @HelloHowAreYouHaveANiceDay
+/profiles/repo-gate/    @HelloHowAreYouHaveANiceDay
