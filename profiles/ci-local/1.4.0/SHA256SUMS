@@ -1,0 +1,9 @@
+50f925a20e9d14ece6c43ba447874519c11a03b2c8a32d1ab6dcb93c74df3696  .standards/ci-local/allowed_signers.org
+29748d61a64f871ca2a6a3ea421edcb486db4bd891ef852feb2204d27c507127  .standards/ci-local/check.json
+e31191b3835a970b527c6ca91d617720ba8db9e80eeb1410030645cd5193396b  .standards/ci-local/ci.mjs
+d4befdb55e5e1360e2e8637fecd22a648a4e5af0fb4346364a31787425054b15  .standards/ci-local/templates/dotnet.json
+f34e9fa6263f664579eeae441f4d7fdbf126d23fe39e81754bc931e09acc8e6b  .standards/ci-local/templates/node.json
+89c6d1f7eafa21c0936fb95e550a460817c88f2d31b55d5c19f3b7df42958a22  .standards/ci-local/templates/python-uv.json
+b6a6e44186cd2a8f1a8d72d6e1480048cd65415aa09615274966b189d604e4e3  .standards/ci-local/templates/rust.json
+fbf32602547ac81ec0cd3eacfa648bca2eef37dd9009f5f40950960a427d21dc  .standards/ci-local/templates/secret-scan.mjs
+1df31ea2d95d559e78177e06f47740b41dfc2f3f24c7f9d1990d9ed71ead2a79  .standards/ci-local/templates/static-site.json

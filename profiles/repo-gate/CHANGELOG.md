@@ -4,6 +4,13 @@ The factory baseline rule (spec section 9) as data: the sensitive-paths CODEOWNE
 ruleset, and `gate.mjs`, which verifies a repo against both (`--offline`: the CODEOWNERS block in follower CI; `--repo`:
 the live rules via `gh api`, what the factory's `system check` and Hermes run). Not a language profile: pairs with base.
 
+## 2.0.0
+
+- Block adds `/ci/` and `/.standards/` (owner `@HelloHowAreYouHaveANiceDay`). ci-local 1.4.0 takes the code owner's
+  approval of the commit as the approval of a CI-file change, replacing the `ci-manifest-approved` label, so every
+  path ci-local guards (`ci/`, `.standards/ci-local/`, `.github/`) must be owner-reviewed. Major: a follower whose
+  CODEOWNERS lacks the new lines newly fails `gate.mjs --offline` until it adds them (libo go, 2026-11-19).
+
 ## 1.1.0
 
 - New item 7 and data file `settings.json`: repo settings `allow_auto_merge` and `delete_branch_on_merge` must be true

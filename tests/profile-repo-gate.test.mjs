@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { KIT_ROOT, tmpdir, node } from './helpers.mjs';
 
-const DIR = process.env.REPO_GATE_SRC ? path.join(KIT_ROOT, 'src/profiles/repo-gate') : path.join(KIT_ROOT, 'profiles/repo-gate/1.1.0');
+const DIR = process.env.REPO_GATE_SRC ? path.join(KIT_ROOT, 'src/profiles/repo-gate') : path.join(KIT_ROOT, 'profiles/repo-gate/2.0.0');
 const STD = path.join(DIR, '.standards/repo-gate');
 const GATE = path.join(STD, 'gate.mjs');
 const g = await import(pathToFileURL(GATE).href);

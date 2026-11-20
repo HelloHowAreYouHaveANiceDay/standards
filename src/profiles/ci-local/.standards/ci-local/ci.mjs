@@ -8,7 +8,9 @@
 //   sign RECORD     ssh-keygen -Y sign (namespace ci-result@hhay) -> RECORD.sig
 //   publish RECORD  put RECORD + .sig on refs/ci/<tree> (keeps the other hosts' records) and push it
 //   verify          the mechanical check: signatures, tree, toolchain, suites, os_required ("any" or an all-of list)
-//   status          verify, then POST commit status `builder-ci` (the only poster; --dry-run prints the request)
+//   status          verify, then POST commit status `builder-ci` (the only poster; --dry-run prints the request).
+//                   A CI-file change counts as approved when a code owner (CODEOWNERS on the default branch) approved
+//                   this exact commit on its open PR; --approved (the old ci-manifest-approved label) is deprecated
 //   check-manifest  lint ci/suites.json and the allowed-signers file
 //   init --stack S  copy templates/S.json (node|rust|python-uv|dotnet|static-site) to ci/suites.json (+ ci/scripts/secret-scan.mjs)
 //
@@ -24,7 +26,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.3.1';
+export const VERSION = '1.4.0';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -548,6 +550,74 @@ function cmdVerify(o) {
   return { exit: verdict === 'pass' ? 0 : verdict === 'fail' ? 1 : 2, result };
 }
 
+// ---------- owner approval (1.4.0) ----------
+// A change under ci/, .standards/ci-local/ or .github/ is approved when an open PR whose head is this commit carries an
+// APPROVED review ON THIS COMMIT from a code owner of every changed path. Owners come from CODEOWNERS on the DEFAULT
+// branch, so a PR cannot name its own approver; only user owners (@login) count, never teams or emails.
+const CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'];
+
+function ownerPatternRegex(p) {
+  const anchored = p.startsWith('/') || p.replace(/\/$/, '').includes('/');
+  let s = p.replace(/^\//, '');
+  if (s.endsWith('/')) s += '**';
+  let re = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '*' && s[i + 1] === '*') {
+      if (s[i + 2] === '/') { re += '(?:.*/)?'; i += 2; } else { re += '.*'; i += 1; }
+    } else if (c === '*') re += '[^/]*';
+    else if (c === '?') re += '[^/]';
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${re}(?:/.*)?$`);
+}
+
+/** CODEOWNERS text -> [{ re, owners }] in file order (the last matching rule wins). */
+export function codeownersRules(text) {
+  const rules = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)#.*$/, '').trim();
+    if (!line) continue;
+    const [pattern, ...owners] = line.split(/\s+/);
+    rules.push({ re: ownerPatternRegex(pattern), owners });
+  }
+  return rules;
+}
+
+/** The user logins (lowercase, no @) that own `file`; teams and emails are dropped. */
+export function userOwnersOf(rules, file) {
+  let owners = [];
+  for (const r of rules) if (r.re.test(file)) owners = r.owners;
+  return owners.filter((o) => /^@[A-Za-z0-9-]+$/.test(o)).map((o) => o.slice(1).toLowerCase());
+}
+
+async function ownerApproval({ cwd, repo, sha, defRef, files, apiBase, token }) {
+  const text = CODEOWNERS_PATHS.map((p) => gitTry(cwd, ['show', `${defRef}:${p}`])).find(Boolean);
+  if (!text) return { approved: false, why: `no CODEOWNERS on ${defRef}` };
+  const rules = codeownersRules(text);
+  const need = files.map((f) => ({ f, owners: userOwnersOf(rules, f) }));
+  const unowned = need.find((x) => !x.owners.length);
+  if (unowned) return { approved: false, why: `${unowned.f} has no user code owner on ${defRef}` };
+  const get = async (u) => {
+    const res = await fetch(`${apiBase}${u}`, { headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': `ci-local/${VERSION}` } });
+    if (!res.ok) throw new CiError('github-read-failed', `GET ${u}: HTTP ${res.status}`);
+    return res.json();
+  };
+  const pulls = (await get(`/repos/${repo}/commits/${sha}/pulls`)).filter((p) => p.state === 'open' && p.head?.sha === sha);
+  for (const p of pulls) {
+    const latest = new Map();
+    for (const rv of await get(`/repos/${repo}/pulls/${p.number}/reviews?per_page=100`)) {
+      const login = rv.user?.login?.toLowerCase();
+      if (login && rv.state !== 'COMMENTED') latest.set(login, rv);
+    }
+    const approvers = [...latest].filter(([, rv]) => rv.state === 'APPROVED' && rv.commit_id === sha).map(([l]) => l);
+    if (need.every((x) => x.owners.some((o) => approvers.includes(o)))) {
+      return { approved: true, pr: p.number, by: approvers.filter((a) => need.some((x) => x.owners.includes(a))) };
+    }
+  }
+  return { approved: false, why: pulls.length ? 'no code-owner approval on this commit' : 'no open PR has this commit as its head' };
+}
+
 // ---------- status ----------
 export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = [], tree, apiBase, targetUrl }) {
   const state = { pass: 'success', pending: 'pending', fail: 'failure' }[verdict];
@@ -568,17 +638,24 @@ async function cmdStatus(o) {
     repo = url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
     if (!repo) throw usage('status needs --repo OWNER/REPO');
   }
-  const v = verifyCore(o, cwd);
-  const verdict = verdictOf(v);
   const apiBase = (o['api-base'] ?? process.env.CI_GITHUB_API ?? 'https://api.github.com').replace(/\/$/, '');
-  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, apiBase, targetUrl: o['target-url'] });
-  if (o['dry-run']) return { exit: 0, result: { dry_run: true, verdict, request: req } };
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+  let v = verifyCore(o, cwd);
+  let approval = null;
+  if (!o.approved && token && v.reasons.some((r) => r.code === 'manifest-changed')) {
+    const defRef = v.summary.default_branch;
+    const files = (gitTry(cwd, ['diff', '--name-only', defRef, v.sha, '--', 'ci', '.standards/ci-local', '.github']) ?? '').split('\n').filter(Boolean);
+    approval = await ownerApproval({ cwd, repo, sha: v.sha, defRef, files, apiBase, token });
+    if (approval.approved) v = verifyCore({ ...o, approved: true }, cwd);
+  }
+  const verdict = verdictOf(v);
+  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, apiBase, targetUrl: o['target-url'] });
+  if (o['dry-run']) return { exit: 0, result: { dry_run: true, verdict, request: req, ...(approval ? { manifest_approval: approval } : {}) } };
   if (!token) throw new CiError('no-token', 'status needs GH_TOKEN (or GITHUB_TOKEN) in the environment');
   const res = await fetch(req.url, { method: 'POST', headers: { ...req.headers, Authorization: `Bearer ${token}` }, body: JSON.stringify(req.body) });
   const text = await res.text();
   if (!res.ok) throw new CiError('status-post-failed', `HTTP ${res.status}: ${text.slice(0, 200)}`);
-  return { exit: 0, result: { posted: true, http: res.status, verdict, request: req } };
+  return { exit: 0, result: { posted: true, http: res.status, verdict, request: req, ...(approval ? { manifest_approval: approval } : {}) } };
 }
 
 // ---------- check-manifest ----------
@@ -642,6 +719,8 @@ function humanLine(verb, r) {
   return JSON.stringify(r);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+// realpath both sides: on macOS /var is a symlink to /private/var, and node reports the module's real path.
+const realOr = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+if (process.argv[1] && realOr(process.argv[1]) === realOr(fileURLToPath(import.meta.url))) {
   process.exitCode = await main(process.argv.slice(2));
 }
