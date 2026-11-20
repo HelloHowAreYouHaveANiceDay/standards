@@ -1,0 +1,11 @@
+{
+  "profile": "ui-kit",
+  "version": "0.0.0",
+  "commands": [
+    {
+      "id": "ui-kit-lint",
+      "tool": "lint",
+      "run": ["node", ".standards/ui-kit/lint.mjs"]
+    }
+  ]
+}
