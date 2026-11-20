@@ -9,8 +9,8 @@
 //   publish RECORD  put RECORD + .sig on refs/ci/<tree> (keeps the other hosts' records) and push it
 //   verify          the mechanical check: signatures, tree, toolchain, suites, os_required ("any" or an all-of list)
 //   status          verify, then POST commit status `builder-ci` (the only poster; --dry-run prints the request).
-//                   A CI-file change counts as approved when a code owner (CODEOWNERS on the default branch) approved
-//                   this exact commit on its open PR; --approved (the old ci-manifest-approved label) is deprecated
+//                   A change under .standards/ci-local counts as approved when a code owner (CODEOWNERS on the default branch) approved
+//                   this exact commit on its open PR, or when the trusted caller passes --approved (it verified the change)
 //   check-manifest  lint ci/suites.json and the allowed-signers file
 //   init --stack S  copy templates/S.json (node|rust|python-uv|dotnet|static-site) to ci/suites.json (+ ci/scripts/secret-scan.mjs)
 //
@@ -26,7 +26,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -35,6 +35,9 @@ const MANIFEST_PATH = 'ci/suites.json';
 const OS_CLASSES = ['windows', 'linux', 'macos'];
 const FILE_CAP = 3000;
 const CONTEXT = 'builder-ci';
+// 1.5.0: only the vendored ci-local tree needs a human (code-owner review, or --approved from the trusted caller).
+// ci/suites.json, ci/scripts/** and .github/** are ungated here; a dropped suite is shown on the status instead.
+const GATED_PATHS = ['.standards/ci-local'];
 
 class CiError extends Error {
   constructor(code, message, exit = 3) { super(message); this.code = code; this.exit = exit; }
@@ -471,12 +474,15 @@ export function verifyCore(o, cwd) {
   const mErr = validateManifest(head);
   if (mErr.length) { fail('manifest-invalid', mErr[0]); return done(); }
 
-  // fail closed when CI-relevant files differ from the default branch (label ci-manifest-approved = --approved)
+  // fail closed when the vendored ci-local tree differs from the default branch (a code-owner review or --approved)
   let defManifest = null;
   if (defRef) {
     try { defManifest = readManifestAt(cwd, defRef); } catch { /* a broken default manifest counts as absent */ }
-    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', 'ci', '.standards/ci-local', '.github']);
-    if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (needs the human ci-manifest-approved label)`);
+    const kept = new Set(head.suites.map((s) => s.id));
+    const dropped = (defManifest?.suites ?? []).map((s) => s.id).filter((id) => !kept.has(id));
+    if (dropped.length) summary.suites_dropped = dropped;
+    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', ...GATED_PATHS]);
+    if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (needs a code-owner review of this commit, or --approved from a trusted caller)`);
   }
   // os_required: "any" = every verified record counts, one passing record suffices; a list = all-of (each OS needs a record).
   const osSpec = o.os ? [o.os] : (defManifest?.os_required ?? head.os_required);
@@ -550,8 +556,8 @@ function cmdVerify(o) {
   return { exit: verdict === 'pass' ? 0 : verdict === 'fail' ? 1 : 2, result };
 }
 
-// ---------- owner approval (1.4.0) ----------
-// A change under ci/, .standards/ci-local/ or .github/ is approved when an open PR whose head is this commit carries an
+// ---------- owner approval (1.4.0, narrowed in 1.5.0) ----------
+// A change under .standards/ci-local/ is approved when an open PR whose head is this commit carries an
 // APPROVED review ON THIS COMMIT from a code owner of every changed path. Owners come from CODEOWNERS on the DEFAULT
 // branch, so a PR cannot name its own approver; only user owners (@login) count, never teams or emails.
 const CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'];
@@ -619,14 +625,16 @@ async function ownerApproval({ cwd, repo, sha, defRef, files, apiBase, token }) 
 }
 
 // ---------- status ----------
-export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = [], tree, apiBase, targetUrl }) {
+export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = [], tree, apiBase, targetUrl, suitesDropped = [] }) {
   const state = { pass: 'success', pending: 'pending', fail: 'failure' }[verdict];
+  const suffix = suitesDropped.length ? `; suites dropped: ${suitesDropped.join(', ')}` : '';
+  const fit = (d, s) => (d.length + s.length > 140 ? `${d.slice(0, Math.max(0, 137 - s.length))}...` : d) + s;
   const desc = verdict === 'pass' ? 'signed records verified' : verdict === 'pending' ? (missing.length ? `waiting for ${missing.join(', ')} record` : waiting[0]) : `${reasons[0].code}: ${reasons[0].detail}`;
   return {
     method: 'POST',
     url: `${apiBase}/repos/${repo}/statuses/${sha}`,
     headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer <GH_TOKEN>', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': `ci-local/${VERSION}` },
-    body: { state, context: CONTEXT, description: desc.length > 140 ? `${desc.slice(0, 137)}...` : desc, target_url: targetUrl ?? `https://github.com/${repo}/tree/refs/ci/${tree}` },
+    body: { state, context: CONTEXT, description: fit(desc, suffix), target_url: targetUrl ?? `https://github.com/${repo}/tree/refs/ci/${tree}` },
   };
 }
 
@@ -644,12 +652,12 @@ async function cmdStatus(o) {
   let approval = null;
   if (!o.approved && token && v.reasons.some((r) => r.code === 'manifest-changed')) {
     const defRef = v.summary.default_branch;
-    const files = (gitTry(cwd, ['diff', '--name-only', defRef, v.sha, '--', 'ci', '.standards/ci-local', '.github']) ?? '').split('\n').filter(Boolean);
+    const files = (gitTry(cwd, ['diff', '--name-only', defRef, v.sha, '--', ...GATED_PATHS]) ?? '').split('\n').filter(Boolean);
     approval = await ownerApproval({ cwd, repo, sha: v.sha, defRef, files, apiBase, token });
     if (approval.approved) v = verifyCore({ ...o, approved: true }, cwd);
   }
   const verdict = verdictOf(v);
-  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, apiBase, targetUrl: o['target-url'] });
+  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, apiBase, targetUrl: o['target-url'], suitesDropped: v.summary.suites_dropped ?? [] });
   if (o['dry-run']) return { exit: 0, result: { dry_run: true, verdict, request: req, ...(approval ? { manifest_approval: approval } : {}) } };
   if (!token) throw new CiError('no-token', 'status needs GH_TOKEN (or GITHUB_TOKEN) in the environment');
   const res = await fetch(req.url, { method: 'POST', headers: { ...req.headers, Authorization: `Bearer ${token}` }, body: JSON.stringify(req.body) });

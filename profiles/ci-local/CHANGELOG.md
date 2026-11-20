@@ -5,6 +5,20 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.5.0
+
+The trust gate narrows to the vendored tree (spec `_design-ci/spec-ci-trust-gate.v3.md`, owner go 2026-11-20).
+`VERSION` is 1.5.0, so a tree that re-syncs re-runs once (`ci-version-mismatch`).
+
+- `verify` and `status` gate only `.standards/ci-local`. A change there is `manifest-changed` unless a code owner
+  approved the commit (`status`, as in 1.4.0) or the trusted caller passes `--approved`. Edits to `ci/suites.json`,
+  `ci/scripts/**` and `.github/**` are no longer gated here (green builder-ci is the rule for them).
+- `--approved` is a supported flag, no longer deprecated: it means the trusted caller (the factory) already verified
+  the change. The `ci-manifest-approved` label wording is gone from the code and the messages.
+- A default-branch suite id missing from the head `ci/suites.json` ("suites dropped") adds `; suites dropped: <ids>` to
+  the `builder-ci` status description and `suites_dropped` to the `verify` result, so a reviewer sees it.
+- Kit test: a branch may not modify or delete files in any released `profiles/<name>/<x.y.z>/` dir.
+
 ## 1.4.0
 
 The code owner's review replaces the `ci-manifest-approved` label (libo go, 2026-11-19: approving the PR and also
