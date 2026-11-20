@@ -116,7 +116,7 @@ const APP = `.mark {
 
 export const fixture = {
   id: 'ui-kit-converging',
-  profiles: ['base@1.0.0', 'ui-kit@1.1.1'],
+  profiles: ['base@1.0.0', 'ui-kit@1.1.2'],
   files: {
     'design/pack.json': packJson(),
     'design/tokens.css': TOKENS,

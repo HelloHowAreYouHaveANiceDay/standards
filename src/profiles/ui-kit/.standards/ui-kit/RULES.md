@@ -47,6 +47,11 @@ version, vendor: "design/vendor/<pack>/<version>", tokens: [own file], extension
 come from the vendored `pack.json`, and the follower's own tokens set only `--ui-color-spot` and its declared extensions.
 The vendored folder carries `SHA256SUMS` over every file but itself.
 
+Optional keys (1.1.2): `exclude: [globs]` removes files from `sources` before UK5/UK8 read them (default `**/*.test.*`,
+`**/*.spec.*`, `**/__fixtures__/**`; setting it replaces the default). `hostSet: [role, ...]` lists kebab role names
+(`"size-range-steps"` = `--ui-size-range-steps`) that the pack documents as set by the host in source files; UK8 lets
+`sources` declare or `setProperty()` only those `--ui-*` names, still never any other public name.
+
 A theme entry is a selector (`:root`, `:root[data-theme="dark"]`) or an at-rule prelude plus selector
 (`@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`). `tokens` files are read in order, later wins.
 
