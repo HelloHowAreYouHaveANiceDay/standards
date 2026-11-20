@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.4.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.5.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -469,20 +469,46 @@ test('lint: in all-of mode a suite os outside os_required is refused (no host co
   assert.match(t.result.findings.join('\n'), /toolchain_os: unknown OS "beos"/); assert.match(t.result.findings.join('\n'), /toolchain_os\.linux\.nope: no built-in probe/);
 });
 
-test('fail closed: a head that changes ci/suites.json or ci/scripts/** fails manifest-changed unless approved', () => {
+test('1.5.0 gates only .standards/ci-local: ci/suites.json, ci/scripts/** and .github edits pass with no approval; a ci-local edit fails manifest-changed unless --approved', () => {
   let repo = fixture();
   let sha = branch(repo, 'feat', { 'ci/suites.json': manifest({ suites: [{ id: 'unit', run: [node('process.exit(0)')], required: false, os: 'any' }] }) });
   publish(repo, sha);
   let v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.ok(reasons(v).includes('manifest-changed')); assert.match(v.result.reasons[0].detail, /ci\/suites\.json/);
-  assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+  assert.equal(v.code, 0, JSON.stringify(v)); assert.ok(!reasons(v).includes('manifest-changed'));
 
   repo = fixture({ man: anyManifest() });
-  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n' });
+  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n', '.github/workflows/x.yml': 'on: push\n' });
   simulate(repo, sha, 'linux');
   v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']); assert.match(v.result.reasons[0].detail, /ci\/scripts\/secret-scan\.mjs/);
+  assert.equal(v.code, 0, JSON.stringify(v));
+
+  repo = fixture({ man: anyManifest() });
+  sha = branch(repo, 'feat', { '.standards/ci-local/templates/x.json': '{}\n' });
+  simulate(repo, sha, 'linux');
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']); assert.match(v.result.reasons[0].detail, /\.standards\/ci-local\/templates\/x\.json/);
+  assert.doesNotMatch(v.result.reasons[0].detail, /label/i);
   assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+});
+
+test('1.5.0 --approved is a supported flag: no deprecation or label wording in the source', () => {
+  const src = fs.readFileSync(CI_SRC, 'utf8');
+  assert.doesNotMatch(src, /deprecated/i); assert.doesNotMatch(src, /ci-manifest-approved/); assert.doesNotMatch(src, /label/i);
+});
+
+test('1.5.0 status: a default-branch suite id missing from the head ci/suites.json adds "; suites dropped: <ids>" to the status description and the result', () => {
+  const some = (ids) => anyManifest({ suites: ids.map((id) => ({ id, run: [node('process.exit(0)')], required: false, os: 'any' })) });
+  const repo = fixture({ man: some(['unit', 'lint', 'docs']) });
+  const sha = branch(repo, 'feat', { 'ci/suites.json': some(['unit']) });
+  simulate(repo, sha, 'linux');
+  const d = ci(repo, ['status', '--sha', sha, '--repo', 'acme/widgets', '--dry-run']);
+  assert.equal(d.code, 0, JSON.stringify(d)); assert.equal(d.result.verdict, 'pass');
+  assert.equal(d.result.request.body.state, 'success');
+  assert.equal(d.result.request.body.description, 'signed records verified; suites dropped: lint, docs');
+  assert.deepEqual(ci(repo, ['verify', '--sha', sha]).result.suites_dropped, ['lint', 'docs']);
+  const ok = branch(repo, 'more', { 'ci/suites.json': some(['unit', 'lint', 'docs', 'extra']) });
+  simulate(repo, ok, 'linux');
+  assert.equal(ci(repo, ['status', '--sha', ok, '--repo', 'acme/widgets', '--dry-run']).result.request.body.description, 'signed records verified');
 });
 
 test('run refuses a dirty or non-detached checkout and an invalid manifest', () => {
@@ -538,7 +564,7 @@ test('status --dry-run prints the exact request; a real POST sends it with the t
   } finally { srv.close(); }
 });
 
-test('1.4.0 codeowners: last matching rule wins; anchored, unanchored, dir and glob patterns; only user owners count', async () => {
+test('1.5.0 codeowners: last matching rule wins; anchored, unanchored, dir and glob patterns; only user owners count', async () => {
   const { codeownersRules, userOwnersOf } = await import(pathToFileURL(CI_SRC).href);
   if (!codeownersRules) return; // a released dir before 1.4.0
   const r = codeownersRules('# c\n/.github/ @Owner\n/ci/ @owner @org/team\n*secret* @x\nauth/ @y\ndocs/*.md @d # trailing\n/ci/scripts/ @org/ops\n');
@@ -552,16 +578,16 @@ test('1.4.0 codeowners: last matching rule wins; anchored, unanchored, dir and g
   assert.deepEqual(userOwnersOf(r, 'README.md'), []);
 });
 
-test('1.4.0 status: a code owner approving THIS commit on its open PR approves a CI-file change; anything less stays manifest-changed', async () => {
+test('1.5.0 status: a code owner approving THIS commit on its open PR approves a CI-file change; anything less stays manifest-changed', async () => {
   if (!(await import(pathToFileURL(CI_SRC).href)).codeownersRules) return; // a released dir before 1.4.0
   const repo = fixture({ man: anyManifest() });
   fs.mkdirSync(path.join(repo, '.github'));
-  fs.writeFileSync(path.join(repo, '.github/CODEOWNERS'), '/.github/ @owner\n/ci/ @Owner\n');
+  fs.writeFileSync(path.join(repo, '.github/CODEOWNERS'), '/.github/ @owner\n/.standards/ @Owner\n');
   g(repo, 'add', '-A'); g(repo, 'commit', '-q', '-m', 'codeowners');
-  const sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n' });
+  const sha = branch(repo, 'feat', { '.standards/ci-local/templates/x.json': '{}\n' });
   simulate(repo, sha, 'linux');
   // A PR that makes ITSELF the owner: CODEOWNERS is read from main, so this does not count.
-  const self = branch(repo, 'self', { 'ci/scripts/x.mjs': '1\n', '.github/CODEOWNERS': '/ci/ @mallory\n/.github/ @mallory\n' });
+  const self = branch(repo, 'self', { '.standards/ci-local/templates/y.json': '1\n', '.github/CODEOWNERS': '/.standards/ @mallory\n/.github/ @mallory\n' });
   simulate(repo, self, 'linux');
 
   let reviews = [];
