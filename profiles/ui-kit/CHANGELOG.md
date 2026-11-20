@@ -4,6 +4,12 @@ The org UI design standard: one shared token contract (role names, WCAG AA floor
 targets, a 4px grid) and a naming standard, applied to every property's own brand pack (spec: wiki
 `projects/spec--ui-design-standard.md`). `lint.mjs` rules UK1-UK8 read the follower's `design/pack.json`. Pairs with base.
 
+## 1.1.0
+
+- New `ui-gen.mjs`: zero-dep generator for the `ui.<domain>` page (`dist-ui/`): colour swatches with per-theme contrast of the contract pairs, type/space/radius/size/shadow tokens, focus and reduced-motion demo, base elements, extension roles, Voice and Look from `DESIGN.md`, optional Storybook link, theme toggle when the pack declares dark.
+- New `contrast.mjs`: the colour parser, ratio and `pairResults()`/`inkResults()` shared by `lint.mjs` (UK3) and `ui-gen.mjs`, so the page cannot show a pass the lint fails. `lint.mjs` behaviour is unchanged except UK1 now rejects a non-https `"storybook"` in `pack.json`; it also exports `subst`, `isExtensionName` and an `out.model` hand-off.
+- `docs/ui-kit.md` section "Publishing ui.<domain>" (Cloudflare Workers static assets recipe, docs only).
+
 ## 1.0.0
 
 - First release. `contract.json` (required `--ui-*` roles, contrast pairs, floors), zero-dep `lint.mjs`:
