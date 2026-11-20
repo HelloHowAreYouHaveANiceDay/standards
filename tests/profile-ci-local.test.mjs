@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.3.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.4.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -469,20 +469,41 @@ test('lint: in all-of mode a suite os outside os_required is refused (no host co
   assert.match(t.result.findings.join('\n'), /toolchain_os: unknown OS "beos"/); assert.match(t.result.findings.join('\n'), /toolchain_os\.linux\.nope: no built-in probe/);
 });
 
-test('fail closed: a head that changes ci/suites.json or ci/scripts/** fails manifest-changed unless approved', () => {
+test('manifest-changed (1.4.0): only .standards/ci-local needs --approved; ci/ and .github edits pass, the message has no label wording', () => {
   let repo = fixture();
-  let sha = branch(repo, 'feat', { 'ci/suites.json': manifest({ suites: [{ id: 'unit', run: [node('process.exit(0)')], required: false, os: 'any' }] }) });
+  let sha = branch(repo, 'feat', { 'ci/suites.json': manifest({ suites: [{ id: 'unit', run: [node('process.exit(0)')], required: true, os: 'any', timeout_min: 3 }] }) });
   publish(repo, sha);
   let v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.ok(reasons(v).includes('manifest-changed')); assert.match(v.result.reasons[0].detail, /ci\/suites\.json/);
-  assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+  assert.equal(v.code, 0, JSON.stringify(v));
 
   repo = fixture({ man: anyManifest() });
-  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n' });
+  sha = branch(repo, 'feat', { 'ci/scripts/secret-scan.mjs': 'process.exit(0)\n', '.github/workflows/x.yml': 'name: x\n' });
   simulate(repo, sha, 'linux');
   v = ci(repo, ['verify', '--sha', sha]);
-  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']); assert.match(v.result.reasons[0].detail, /ci\/scripts\/secret-scan\.mjs/);
+  assert.equal(v.code, 0, JSON.stringify(v));
+
+  repo = fixture({ man: anyManifest() });
+  sha = branch(repo, 'feat', { '.standards/ci-local/ci.mjs': `${fs.readFileSync(CI_SRC, 'utf8')}\n// edit\n` });
+  simulate(repo, sha, 'linux');
+  v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']);
+  assert.match(v.result.reasons[0].detail, /\.standards\/ci-local\/ci\.mjs/);
+  assert.doesNotMatch(v.result.reasons[0].detail, /label|ci-manifest-approved/);
   assert.equal(ci(repo, ['verify', '--sha', sha, '--approved']).code, 0);
+});
+
+test('status: a required suite dropped or made optional vs the default branch adds "; suites dropped: <ids>"; unchanged adds nothing', () => {
+  const two = (a, b) => anyManifest({ suites: [
+    { id: 'unit', run: [node('process.exit(0)')], required: a, os: 'any', timeout_min: 2 },
+    { id: 'lint', run: [node('process.exit(0)')], required: b, os: 'any', timeout_min: 2 }] });
+  const repo = fixture({ man: two(true, true) });
+  const sha = branch(repo, 'feat', { 'ci/suites.json': two(false, true) });
+  const sha2 = branch(repo, 'feat2', { 'ci/suites.json': anyManifest({ suites: [{ id: 'lint', run: [node('process.exit(0)')], required: true, os: 'any', timeout_min: 2 }] }) });
+  const sha3 = branch(repo, 'feat3', { 'b.txt': 'b\n' });
+  const desc = (s) => { simulate(repo, s, 'linux'); const r = ci(repo, ['status', '--sha', s, '--repo', 'o/r', '--dry-run']); assert.equal(r.code, 0, JSON.stringify(r)); return r.result.request.body.description; };
+  assert.match(desc(sha), /; suites dropped: unit$/);
+  assert.match(desc(sha2), /; suites dropped: unit$/);
+  assert.doesNotMatch(desc(sha3), /suites dropped/);
 });
 
 test('run refuses a dirty or non-detached checkout and an invalid manifest', () => {

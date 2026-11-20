@@ -5,6 +5,19 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.4.0
+
+Trust gate v2 (spec `_design-ci/spec-ci-trust-gate.v2.md`, slice T1). `VERSION` is 1.4.0, so a re-synced tree re-runs once.
+
+- `verify`: the `manifest-changed` diff set narrows from `ci .standards/ci-local .github` to `.standards/ci-local` only.
+  Edits under `ci/` (including `suites.json` and `ci/scripts/**`) and `.github/` no longer need `--approved`; they are
+  ROUTINE and gated by green builder-ci.
+- The `manifest-changed` message no longer mentions the `ci-manifest-approved` label (the label is retired; approval
+  is a review, decided by the factory, not by this file).
+- `status`: when the head manifest drops a suite the default branch had as required, or makes it optional, the status
+  description ends with `; suites dropped: <ids>` (comma-separated). Display only; it never changes the verdict.
+  `verify --json` carries the ids as `suites_dropped`.
+
 ## 1.3.1
 
 - Enrolls the macOS builder host signer in `allowed_signers.org`: `hermes@mac1` (haus, the Mac agent; ed25519, namespace

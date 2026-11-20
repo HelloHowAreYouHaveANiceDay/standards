@@ -154,6 +154,24 @@ test('append-only: a deleted or renamed file in an existing version dir fails', 
   assert.match(r.out, /D\s+profiles\/x\/1\.0\.0\/a\.txt/);
 });
 
+test('append-only: editing a released ci-local dir (profiles/ci-local/1.3.1/...) fails, adding a new version and VERSIONS edits pass', () => {
+  const dir = tmpdir('standards-ao-cl-');
+  git(dir, 'init', '-q', '-b', 'main');
+  fs.cpSync(path.join(PROFILES, 'ci-local', '1.3.1'), path.join(dir, 'profiles/ci-local/1.3.1'), { recursive: true });
+  for (const f of ['VERSIONS', 'CHANGELOG.md']) fs.copyFileSync(path.join(PROFILES, 'ci-local', f), path.join(dir, 'profiles/ci-local', f));
+  git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', 'base');
+  git(dir, 'checkout', '-q', '-b', 'pr');
+  fs.cpSync(path.join(PROFILES, 'ci-local', '1.3.1'), path.join(dir, 'profiles/ci-local/9.9.9'), { recursive: true });
+  fs.appendFileSync(path.join(dir, 'profiles/ci-local/VERSIONS'), '9.9.9\n');
+  git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', 'add');
+  assert.equal(ao(dir).code, 0);
+  fs.appendFileSync(path.join(dir, 'profiles/ci-local/1.3.1/.standards/ci-local/ci.mjs'), '// x\n');
+  git(dir, 'commit', '-q', '-am', 'edit released');
+  const r = ao(dir);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /M\s+profiles\/ci-local\/1\.3\.1\/\.standards\/ci-local\/ci\.mjs/);
+});
+
 // ------------------------------------------------------------ release script
 test('release: snapshots src/profiles/<name> into a new version dir with SHA256SUMS; refuses an existing dir', () => {
   const kit = tmpdir('standards-rel-');

@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.3.1';
+export const VERSION = '1.4.0';
 const NS = 'ci-result@hhay';
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
@@ -469,12 +469,15 @@ export function verifyCore(o, cwd) {
   const mErr = validateManifest(head);
   if (mErr.length) { fail('manifest-invalid', mErr[0]); return done(); }
 
-  // fail closed when CI-relevant files differ from the default branch (label ci-manifest-approved = --approved)
+  // fail closed when the vendored verifier (.standards/ci-local) differs from the default branch; --approved is a human review (1.4.0: ci/ and .github are ungated here)
   let defManifest = null;
   if (defRef) {
     try { defManifest = readManifestAt(cwd, defRef); } catch { /* a broken default manifest counts as absent */ }
-    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', 'ci', '.standards/ci-local', '.github']);
-    if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (needs the human ci-manifest-approved label)`);
+    const diff = gitTry(cwd, ['diff', '--name-only', defRef, sha, '--', '.standards/ci-local']);
+    // a required suite the default branch had that the head dropped or made optional: shown in the status, never a failure
+    const reqHead = new Set(head.suites.filter((x) => x.required).map((x) => x.id));
+    summary.suites_dropped = (defManifest?.suites ?? []).filter((x) => x.required && !reqHead.has(x.id)).map((x) => x.id);
+    if (diff && !o.approved) fail('manifest-changed', `differs from ${defRef}: ${diff.split('\n').slice(0, 3).join(', ')} (ci-local changes need approval)`);
   }
   // os_required: "any" = every verified record counts, one passing record suffices; a list = all-of (each OS needs a record).
   const osSpec = o.os ? [o.os] : (defManifest?.os_required ?? head.os_required);
@@ -549,14 +552,16 @@ function cmdVerify(o) {
 }
 
 // ---------- status ----------
-export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = [], tree, apiBase, targetUrl }) {
+export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = [], tree, apiBase, targetUrl, dropped = [] }) {
   const state = { pass: 'success', pending: 'pending', fail: 'failure' }[verdict];
-  const desc = verdict === 'pass' ? 'signed records verified' : verdict === 'pending' ? (missing.length ? `waiting for ${missing.join(', ')} record` : waiting[0]) : `${reasons[0].code}: ${reasons[0].detail}`;
+  const base = verdict === 'pass' ? 'signed records verified' : verdict === 'pending' ? (missing.length ? `waiting for ${missing.join(', ')} record` : waiting[0]) : `${reasons[0].code}: ${reasons[0].detail}`;
+  const suffix = dropped.length ? `; suites dropped: ${dropped.join(',')}` : '';
+  const desc = base.length + suffix.length > 140 ? `${base.slice(0, Math.max(0, 137 - suffix.length))}...${suffix}` : base + suffix;
   return {
     method: 'POST',
     url: `${apiBase}/repos/${repo}/statuses/${sha}`,
     headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer <GH_TOKEN>', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': `ci-local/${VERSION}` },
-    body: { state, context: CONTEXT, description: desc.length > 140 ? `${desc.slice(0, 137)}...` : desc, target_url: targetUrl ?? `https://github.com/${repo}/tree/refs/ci/${tree}` },
+    body: { state, context: CONTEXT, description: desc, target_url: targetUrl ?? `https://github.com/${repo}/tree/refs/ci/${tree}` },
   };
 }
 
@@ -571,7 +576,7 @@ async function cmdStatus(o) {
   const v = verifyCore(o, cwd);
   const verdict = verdictOf(v);
   const apiBase = (o['api-base'] ?? process.env.CI_GITHUB_API ?? 'https://api.github.com').replace(/\/$/, '');
-  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, apiBase, targetUrl: o['target-url'] });
+  const req = statusRequest({ repo, sha: v.sha, verdict, reasons: v.reasons, missing: v.pending ?? [], waiting: v.waiting, tree: v.tree, dropped: v.summary.suites_dropped ?? [], apiBase, targetUrl: o['target-url'] });
   if (o['dry-run']) return { exit: 0, result: { dry_run: true, verdict, request: req } };
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
   if (!token) throw new CiError('no-token', 'status needs GH_TOKEN (or GITHUB_TOKEN) in the environment');
