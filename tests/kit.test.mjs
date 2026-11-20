@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  KIT_ROOT, APPEND_ONLY, RELEASE, sha256, walk, node, git, tmpdir, cmpSemver,
+  KIT_ROOT, APPEND_ONLY, RELEASE, sha256, walk, node, git, tmpdir, cmpSemver, run,
 } from './helpers.mjs';
 
 const PROFILES = path.join(KIT_ROOT, 'profiles');
@@ -152,6 +152,26 @@ test('append-only: a deleted or renamed file in an existing version dir fails', 
   const r = ao(dir);
   assert.equal(r.code, 1);
   assert.match(r.out, /D\s+profiles\/x\/1\.0\.0\/a\.txt/);
+});
+
+test('append-only: editing profiles/ci-local/1.4.0/x (or any released ci-local dir) fails', () => {
+  const dir = tmpdir('standards-ao-cl-');
+  git(dir, 'init', '-q', '-b', 'main');
+  fs.mkdirSync(path.join(dir, 'profiles/ci-local/1.4.0'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'profiles/ci-local/1.4.0/x'), 'x\n');
+  git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', 'v1.4.0');
+  git(dir, 'checkout', '-q', '-b', 'pr');
+  fs.appendFileSync(path.join(dir, 'profiles/ci-local/1.4.0/x'), 'edit\n');
+  git(dir, 'commit', '-q', '-am', 'edit');
+  const r = ao(dir);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /M\s+profiles\/ci-local\/1\.4\.0\/x/);
+});
+
+test('append-only: this branch leaves every released dir untouched vs origin/main (skipped where there is no origin/main)', () => {
+  if (run('git', ['rev-parse', '--verify', '-q', 'origin/main'], { cwd: KIT_ROOT }).code !== 0) return;
+  const r = node([APPEND_ONLY, 'origin/main'], { cwd: KIT_ROOT });
+  assert.equal(r.code, 0, r.out);
 });
 
 // ------------------------------------------------------------ release script
