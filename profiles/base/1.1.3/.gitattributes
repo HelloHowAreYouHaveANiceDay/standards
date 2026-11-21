@@ -1,0 +1,55 @@
+# Vendored by HelloHowAreYouHaveANiceDay/standards (profile base). Do not edit.
+# Overrides: a nested .gitattributes (e.g. testdata/.gitattributes with `* -text`), with a reason comment.
+* text=auto eol=lf
+
+# cmd.exe needs CRLF batch files.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary types: never normalised, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.bmp binary
+*.ico binary
+*.webp binary
+*.tif binary
+*.tiff binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.7z binary
+*.tar binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.pdb binary
+*.lib binary
+*.a binary
+*.wasm binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+*.mov binary
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.pptx binary
+*.db binary
+*.sqlite binary
+*.rvt binary
+*.rfa binary
+*.rte binary
+*.dwg binary
+*.skp binary
+*.3dm binary
+*.blend binary
+*.glb binary

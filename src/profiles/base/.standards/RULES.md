@@ -3,6 +3,8 @@
 Gate: `node .standards/check.mjs` -- run it before pushing; CI runs the same command.
 (`node .standards/check.mjs --locks-only` checks only the locks, without running tools.)
 
+The gate compares config changes with the merge base of `origin/main`. It rejects increased ESLint suppression counts or entries, weaker `.golangci.local.yml` overrides, removed or downgraded profiles, opt-outs, and edits to files published by pinned profiles. Keep the checkout's full history and fetch `origin/main` in CI.
+
 - Never edit anything under `.standards/`, and never edit the generated `.golangci.yml`. A `[lock]` or
   `[generated]` failure means one of them changed: restore it, or re-run sync (`node <kit>/sync.mjs sync`).
 - Overrides go in the tool's native overlay file outside `.standards/`, each with a comment giving the reason:

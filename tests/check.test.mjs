@@ -171,7 +171,7 @@ test('checkoutCacheEnv: the tool cache lives in this checkout\'s git dir, so two
 });
 
 test('check.mjs imports only node: built-ins (zero-dependency rule)', () => {
-  const src = fs.readFileSync(path.join(KIT_ROOT, 'profiles/base/1.0.0/.standards/check.mjs'), 'utf8');
+  const src = fs.readFileSync(path.join(KIT_ROOT, 'src/profiles/base/.standards/check.mjs'), 'utf8');
   const specs = [...src.matchAll(/(?:import\s[^'"]*from\s*|import\(\s*|require\(\s*)['"]([^'"]+)['"]/g)].map((m) => m[1]);
   assert.ok(specs.length > 0);
   for (const s of specs) assert.match(s, /^node:/, s);
