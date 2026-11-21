@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.5.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.6.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -564,66 +564,37 @@ test('status --dry-run prints the exact request; a real POST sends it with the t
   } finally { srv.close(); }
 });
 
-test('1.5.0 codeowners: last matching rule wins; anchored, unanchored, dir and glob patterns; only user owners count', async () => {
-  const { codeownersRules, userOwnersOf } = await import(pathToFileURL(CI_SRC).href);
-  if (!codeownersRules) return; // a released dir before 1.4.0
-  const r = codeownersRules('# c\n/.github/ @Owner\n/ci/ @owner @org/team\n*secret* @x\nauth/ @y\ndocs/*.md @d # trailing\n/ci/scripts/ @org/ops\n');
-  assert.deepEqual(userOwnersOf(r, '.github/workflows/a.yml'), ['owner']);
-  assert.deepEqual(userOwnersOf(r, 'ci/suites.json'), ['owner']);
-  assert.deepEqual(userOwnersOf(r, 'ci/scripts/s.mjs'), [], 'a later team-only rule wins and teams do not count');
-  assert.deepEqual(userOwnersOf(r, 'x/my.secret'), ['x']);
-  assert.deepEqual(userOwnersOf(r, 'src/auth/a.ts'), ['y']);
-  assert.deepEqual(userOwnersOf(r, 'docs/a.md'), ['d']);
-  assert.deepEqual(userOwnersOf(r, 'docs/x/a.md'), []);
-  assert.deepEqual(userOwnersOf(r, 'README.md'), []);
-});
-
-test('1.5.0 status: a code owner approving THIS commit on its open PR approves a CI-file change; anything less stays manifest-changed', async () => {
-  if (!(await import(pathToFileURL(CI_SRC).href)).codeownersRules) return; // a released dir before 1.4.0
+test('1.6.0 status reads no reviews: no CODEOWNERS or review code, no GitHub GET; an approval on the PR does not lift manifest-changed; --approved does', async () => {
+  const src = fs.readFileSync(CI_SRC, 'utf8');
+  assert.doesNotMatch(src, /codeowners/i); assert.doesNotMatch(src, /\/reviews/); assert.doesNotMatch(src, /commits\/\$\{/);
+  assert.equal((await import(pathToFileURL(CI_SRC).href)).codeownersRules, undefined);
   const repo = fixture({ man: anyManifest() });
   fs.mkdirSync(path.join(repo, '.github'));
-  fs.writeFileSync(path.join(repo, '.github/CODEOWNERS'), '/.github/ @owner\n/.standards/ @Owner\n');
+  fs.writeFileSync(path.join(repo, '.github/CODEOWNERS'), '/.standards/ @owner\n');
   g(repo, 'add', '-A'); g(repo, 'commit', '-q', '-m', 'codeowners');
   const sha = branch(repo, 'feat', { '.standards/ci-local/templates/x.json': '{}\n' });
   simulate(repo, sha, 'linux');
-  // A PR that makes ITSELF the owner: CODEOWNERS is read from main, so this does not count.
-  const self = branch(repo, 'self', { '.standards/ci-local/templates/y.json': '1\n', '.github/CODEOWNERS': '/.standards/ @mallory\n/.github/ @mallory\n' });
-  simulate(repo, self, 'linux');
-
-  let reviews = [];
-  const posted = [];
+  const seen = [];
   const srv = http.createServer((req, res) => {
     let b = ''; req.on('data', (c) => { b += c; });
     req.on('end', () => {
-      const head = req.url.match(/^\/repos\/acme\/widgets\/commits\/([0-9a-f]+)\/pulls$/);
-      if (req.method === 'GET' && head) { res.writeHead(200); res.end(JSON.stringify([{ number: 7, state: 'open', head: { sha: head[1] } }])); return; }
-      if (req.method === 'GET' && req.url.startsWith('/repos/acme/widgets/pulls/7/reviews')) { res.writeHead(200); res.end(JSON.stringify(reviews)); return; }
-      posted.push(JSON.parse(b).state); res.writeHead(201); res.end('{}');
+      seen.push(`${req.method} ${req.url}`);
+      if (req.method === 'GET') { res.writeHead(200); res.end(JSON.stringify([{ number: 7, state: 'open', head: { sha }, user: { login: 'owner' }, commit_id: sha }])); return; }
+      res.writeHead(201); res.end('{}');
     });
   });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   try {
     const base = `http://127.0.0.1:${srv.address().port}`;
-    const status = async (at) => {
-      const { stdout } = await promisify(execFile)(process.execPath, [path.join(repo, '.standards/ci-local/ci.mjs'), 'status', '--sha', at, '--repo', 'acme/widgets', '--api-base', base, '--default-branch', 'main', '--json'], { cwd: repo, env: { ...env, GH_TOKEN: 'tok', GITHUB_TOKEN: '' } }).catch((e) => e);
+    const status = async (extra = []) => {
+      const { stdout } = await promisify(execFile)(process.execPath, [path.join(repo, '.standards/ci-local/ci.mjs'), 'status', '--sha', sha, '--repo', 'acme/widgets', '--api-base', base, '--default-branch', 'main', '--json', ...extra], { cwd: repo, env: { ...env, GH_TOKEN: 'tok', GITHUB_TOKEN: '' } }).catch((e) => e);
       return JSON.parse(stdout).result;
     };
-    const rv = (login, state, commit) => ({ user: { login }, state, commit_id: commit });
-    let s = await status(sha);
-    assert.equal(s.verdict, 'fail'); assert.match(s.manifest_approval.why, /no code-owner approval/);
-    reviews = [rv('owner', 'APPROVED', 'f'.repeat(40))];
-    assert.equal((await status(sha)).verdict, 'fail', 'an approval of an older commit does not count');
-    reviews = [rv('someone', 'APPROVED', sha)];
-    assert.equal((await status(sha)).verdict, 'fail', 'a non-owner approval does not count');
-    reviews = [rv('owner', 'APPROVED', sha), rv('owner', 'CHANGES_REQUESTED', sha)];
-    assert.equal((await status(sha)).verdict, 'fail', 'the latest review per person counts');
-    reviews = [rv('owner', 'CHANGES_REQUESTED', sha), rv('owner', 'APPROVED', sha), rv('owner', 'COMMENTED', sha)];
-    s = await status(sha);
-    assert.equal(s.verdict, 'pass', JSON.stringify(s)); assert.deepEqual(s.manifest_approval, { approved: true, pr: 7, by: ['owner'] });
-    reviews = [rv('mallory', 'APPROVED', self)];
-    s = await status(self);
-    assert.equal(s.verdict, 'fail'); assert.match(s.manifest_approval.why, /no code-owner approval/);
-    assert.deepEqual(posted, ['failure', 'failure', 'failure', 'failure', 'success', 'failure']);
+    let s = await status();
+    assert.equal(s.verdict, 'fail'); assert.equal(s.manifest_approval, undefined);
+    s = await status(['--approved']);
+    assert.equal(s.verdict, 'pass', JSON.stringify(s));
+    assert.deepEqual(seen, [`POST /repos/acme/widgets/statuses/${sha}`, `POST /repos/acme/widgets/statuses/${sha}`], 'only status POSTs, no GET');
   } finally { srv.close(); }
 });
 

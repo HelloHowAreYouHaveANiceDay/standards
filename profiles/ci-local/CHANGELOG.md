@@ -5,6 +5,20 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.6.0
+
+`status` reads no reviews (spec `_design-ci/spec-ci-simple.v2.md`, owner go 2026-11-20). `VERSION` is 1.6.0, so a tree
+that re-syncs re-runs once (`ci-version-mismatch`).
+
+- `status` makes no GitHub GET: the CODEOWNERS parser, the `commits/<sha>/pulls` and `pulls/<n>/reviews` reads and the
+  `manifest_approval` result field are gone. It verifies, then POSTs the `builder-ci` status.
+- A change under `.standards/ci-local` is `manifest-changed` unless the trusted caller passes `--approved` (kept, same
+  meaning as 1.5.0). The one human gate is GitHub's own code-owner review on the PR, not this tool.
+- Everything else is as 1.5.0 (gated path, suites-dropped suffix, records, `run`/`sign`/`publish`/`verify`).
+- Kit: `.github/workflows/release-tags.yml` and `.github/scripts/release-tags.sh` are deleted; tags are no longer
+  created by a workflow.
+- **repo-gate 2.0.0: do not use.**
+
 ## 1.5.0
 
 The trust gate narrows to the vendored tree (spec `_design-ci/spec-ci-trust-gate.v3.md`, owner go 2026-11-20).
