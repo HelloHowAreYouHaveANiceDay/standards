@@ -1,6 +1,6 @@
-9df494d739bed08ab2b19f23c022ea97af877f8b50f765e2e7fc5cb5acab91b7  .standards/ci-local/allowed_signers.org
-7c8ab869a02c5660df388dd70fb4957e64b9e0e885a62bf2b1dff4138dd2fc19  .standards/ci-local/check.json
-5255bab2002fa0ba65058532259c6d6eb8fffac59c024d6879b44f8d21a42192  .standards/ci-local/ci.mjs
+50f925a20e9d14ece6c43ba447874519c11a03b2c8a32d1ab6dcb93c74df3696  .standards/ci-local/allowed_signers.org
+51acd396c9f3e576040bf14265063488efe51a3672f42c791e157afd1e227eed  .standards/ci-local/check.json
+7375704a4d499cafa2800336e8e2a7460162e40117b439b6e1ea545a3d31f57c  .standards/ci-local/ci.mjs
 d4befdb55e5e1360e2e8637fecd22a648a4e5af0fb4346364a31787425054b15  .standards/ci-local/templates/dotnet.json
 f34e9fa6263f664579eeae441f4d7fdbf126d23fe39e81754bc931e09acc8e6b  .standards/ci-local/templates/node.json
 89c6d1f7eafa21c0936fb95e550a460817c88f2d31b55d5c19f3b7df42958a22  .standards/ci-local/templates/python-uv.json
