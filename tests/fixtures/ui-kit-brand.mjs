@@ -81,7 +81,7 @@ const OG = png(1200, 630, NAVY);
 
 export const fixture = {
   id: 'ui-kit-brand',
-  profiles: ['base@1.0.0', 'ui-kit@1.2.0'],
+  profiles: ['base@1.0.0', 'ui-kit@1.2.1'],
   files: {
     'design/pack.json': packJson(PACK.brand),
     'design/tokens.css': TOKENS,

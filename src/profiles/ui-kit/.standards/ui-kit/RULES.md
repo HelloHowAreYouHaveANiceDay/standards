@@ -95,6 +95,9 @@ Optional keys (1.1.2): `exclude: [globs]` removes files from `sources` before UK
 
 A theme entry is a selector (`:root`, `:root[data-theme="dark"]`) or an at-rule prelude plus selector
 (`@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`). `tokens` files are read in order, later wins.
+A bare selector matches only rules outside every at-rule; a rule inside `@media` is matched only by an entry that
+names the at-rule (1.2.1). So `@media (prefers-color-scheme: dark) { :root {...} }` is the dark entry
+`@media (prefers-color-scheme: dark) :root`, and it no longer feeds the light `:root`.
 
 ## Rename codemod (kit script, not vendored)
 

@@ -136,12 +136,15 @@ function splitTop(s) {
   return out.map((x) => x.trim()).filter(Boolean);
 }
 
-// Every key a theme entry may name this rule by: each selector alone, and `<at-rule prelude> <selector>`.
+// Every key a theme entry may name this rule by. A rule outside every at-rule answers to its bare selector. A rule inside
+// an at-rule answers only to `<at-rule prelude> <selector>`, never to the bare selector (1.2.1: a dark theme written
+// `@media (prefers-color-scheme: dark) { :root {...} }` must not also match the light theme's `:root`).
 function ruleKeys(rule) {
   const keys = new Set();
   const ctx = rule.ctx.join(' ');
+  const inAt = rule.ctx.some((c) => c.startsWith('@'));
   for (const s of splitTop(rule.sel)) {
-    keys.add(normSel(s));
+    if (!inAt) keys.add(normSel(s));
     if (ctx) keys.add(normSel(`${ctx} ${s}`));
   }
   return keys;
