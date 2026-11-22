@@ -4,6 +4,12 @@ The org UI design standard: one shared token contract (role names, WCAG AA floor
 targets, a 4px grid) and a naming standard, applied to every property's own brand pack (spec: wiki
 `projects/spec--ui-design-standard.md`). `lint.mjs` rules UK1-UK8 read the follower's `design/pack.json`. Pairs with base.
 
+## 1.2.1
+
+- Fix: a theme's bare selector now matches only rules outside at-rules. In 1.2.0 a rule inside `@media` was also keyed by its bare selector, so `@media (prefers-color-scheme: dark) { :root {...} }` fed the light theme's `:root`: the light theme resolved to the dark values, UK3 checked the wrong colours and UK10 rejected a correct mark. A theme entry written `<at-rule> <selector>` still matches inside its at-rule. `ui-gen.mjs` reads the same resolved model from `lint.mjs` and `contrast.mjs` only receives resolved colours, so both are fixed by this one change. A follower that relied on the bleed (a dark entry written as a bare selector, rule inside `@media`) must write the entry as `@media (...) <selector>`.
+- Fixtures: `ui-kit` fixture steps for the `@media` dark block (OK with the at-rule entry, FAIL on 1.2.0), and `tests/profile-ui-kit-121.test.mjs`.
+- RULES.md: the theme-entry matching rule is stated.
+
 ## 1.2.0
 
 - Brand rules UK9-UK12 in `lint.mjs` (zero-dep XML tokenizer, PNG IHDR and ICO directory readers, light-theme token resolution shared with UK2/UK3): UK9 `brand` block in `pack.json` plus required `design/brand/` files (WARN while no `brand` block exists, FAIL when present but wrong), UK10 SVG hygiene and logo colours equal to `brand.colors` tokens, UK11 raster sizes from headers, UK12 `brand.served` copies byte-equal to their masters. WARN-when-absent flips to FAIL in 2.0.0 with UK4/UK5.

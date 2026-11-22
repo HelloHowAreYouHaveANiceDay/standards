@@ -86,7 +86,7 @@ const PAGE = `<!doctype html>
 
 export const fixture = {
   id: 'ui-kit',
-  profiles: ['base@1.0.0', 'ui-kit@1.2.0'],
+  profiles: ['base@1.0.0', 'ui-kit@1.2.1'],
   files: {
     'design/pack.json': packJson(),
     'design/tokens.css': TOKENS,
@@ -97,12 +97,12 @@ export const fixture = {
   inject: (dir, h) => {
     const w = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
     const keep = (rel) => (fs.existsSync(path.join(dir, rel)) ? fs.readFileSync(path.join(dir, rel), 'utf8') : null);
-    const bites = (msg, re, edits, fails = true) => {
+    const bites = (msg, re, edits, fails = true, notRe = null) => {
       const before = Object.keys(edits).map((rel) => [rel, keep(rel)]);
       for (const [rel, text] of Object.entries(edits)) w(rel, text);
       h.git('add', '-A');
       const r = h.check();
-      h.step((fails ? r.code === 1 : r.code === 0) && re.test(r.out), msg, r.out);
+      h.step((fails ? r.code === 1 : r.code === 0) && re.test(r.out) && !(notRe && notRe.test(r.out)), msg, r.out);
       for (const [rel, text] of before) { if (text === null) fs.rmSync(path.join(dir, rel)); else w(rel, text); }
       h.git('add', '-A');
     };
@@ -112,6 +112,31 @@ export const fixture = {
       'design/pack.json': packJson({ themes: { light: [':root'], dark: [':root[data-theme="dark"]'] } }),
       'design/tokens.css': `${TOKENS}\n:root[data-theme="dark"] {\n  --ui-color-background: #101418;\n  --ui-color-panel: #1b2229;\n  --ui-color-text: #f2f4f6;\n  --ui-color-line: #34404a;\n  --ui-color-border: #8b99a5;\n  --ui-color-primary: #8cc4f2;\n  --ui-color-on-primary: #08233a;\n  --ui-color-alert: #ff8a8a;\n  --ui-color-on-alert: #2a0507;\n  --ui-color-spot: #8cc4f2;\n  --ui-color-focus: #8cc4f2;\n}\n`,
     });
+    // 1.2.1: a dark block on plain :root inside @media must not feed the light theme. The dark block leaves
+    // --ui-color-risk-1-ink to the light value, which fails on the dark background: only theme "dark" may report it.
+    // On 1.2.0 the light theme resolved to the dark background too, so it reported "light" as well (RED).
+    const MEDIA_DARK = `${TOKENS}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ui-color-background: #101418;
+    --ui-color-panel: #1b2229;
+    --ui-color-text: #f2f4f6;
+    --ui-color-text-muted: #c5ccd2;
+    --ui-color-line: #34404a;
+    --ui-color-border: #8b99a5;
+    --ui-color-primary: #8cc4f2;
+    --ui-color-on-primary: #08233a;
+    --ui-color-alert: #ff8a8a;
+    --ui-color-on-alert: #2a0507;
+    --ui-color-spot: #8cc4f2;
+    --ui-color-focus: #8cc4f2;
+  }
+}
+`;
+    bites('ui-kit: a dark block on plain :root inside @media does not feed the light theme (only dark fails UK3)', /FAIL \[ui-kit\/UK3\] design\/tokens\.css:\d+: --ui-color-risk-1-ink on --ui-color-background is 2\.35:1 in theme "dark"/, {
+      'design/pack.json': packJson({ themes: { light: [':root'], dark: ['@media (prefers-color-scheme: dark) :root'] } }),
+      'design/tokens.css': MEDIA_DARK,
+    }, true, /in theme "light"/);
     bites('ui-kit: an unguarded transition fails UK7 naming src/app.css', /FAIL \[ui-kit\/UK7\] src\/app\.css:5: motion/, { 'design/base.css': BASE.replace(/@media[\s\S]*$/, '') });
     bites('ui-kit: no :focus-visible rule fails UK6', /FAIL \[ui-kit\/UK6\] design\/pack\.json: no :focus-visible rule reads var\(--ui-color-focus\)/, { 'design/base.css': BASE.replace(/:focus-visible \{[^}]*\}\n\n/, '') });
     bites('ui-kit: a raw #ff0000 in a .vue file warns UK5 naming it and the gate still exits 0', /WARN \[ui-kit\/UK5\] src\/Card\.vue:2: colour literal #ff0000/, { 'src/Card.vue': '<style>\n.x { color: #ff0000; }\n</style>\n' }, false);

@@ -1,0 +1,20 @@
+{
+  "pack": "",
+  "prefix": "",
+  "version": "0.1.0",
+  "themes": { "light": [":root"] },
+  "extensions": [],
+  "budgets": { "inks": null, "sizes": null },
+  "tokens": ["design/tokens.css"],
+  "base": ["design/base.css"],
+  "sources": ["src/**/*.{css,scss,html,njk,astro,vue,svelte,js,jsx,ts,tsx}"],
+  "brand": {
+    "name": "",
+    "wordmark": { "font": "--ui-font-sans", "weight": 700 },
+    "clearspace": 0.5,
+    "min_px": 16,
+    "colors": ["--ui-color-primary", "--ui-color-text"],
+    "assets": [],
+    "served": {}
+  }
+}

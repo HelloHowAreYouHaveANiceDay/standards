@@ -1,0 +1,41 @@
+/* Neutral grey pack: every required --ui-* role assigned from private --tpl-* primitives. It passes the ui-kit
+   contract as copied (UK2/UK3). Rename the prefix: replace `tpl` here and set "prefix" in design/pack.json. Then change
+   the primitives to give the property its look; keep the public assignments. */
+:root {
+  /* private primitives: read only in this file */
+  --tpl-white: #ffffff;
+  --tpl-grey-50: #f5f5f5;
+  --tpl-grey-200: #d9d9d9;
+  --tpl-grey-500: #767676;
+  --tpl-grey-700: #595959;
+  --tpl-grey-800: #404040;
+  --tpl-grey-900: #1a1a1a;
+  --tpl-red-700: #b00020;
+  --tpl-stack-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* public roles: the only names app code reads */
+  --ui-color-background: var(--tpl-white);
+  --ui-color-panel: var(--tpl-grey-50);
+  --ui-color-text: var(--tpl-grey-900);
+  --ui-color-text-muted: var(--tpl-grey-700);
+  --ui-color-line: var(--tpl-grey-200);
+  --ui-color-border: var(--tpl-grey-500);
+  --ui-color-primary: var(--tpl-grey-800);
+  --ui-color-on-primary: var(--tpl-white);
+  --ui-color-alert: var(--tpl-red-700);
+  --ui-color-on-alert: var(--tpl-white);
+  --ui-color-spot: var(--tpl-grey-700);
+  --ui-color-focus: var(--tpl-grey-900);
+
+  --ui-font-sans: var(--tpl-stack-sans);
+
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 24px;
+  --ui-space-6: 32px;
+
+  --ui-size-touch-min: 44px;
+  --ui-size-focus-ring: 2px;
+}
