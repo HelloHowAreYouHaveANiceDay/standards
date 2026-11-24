@@ -5,6 +5,28 @@ Builder-side CI (spec `_design-ci/spec-builder-side-ci.v3.md`, slice S0a): the v
 `publish`; `verify` / `status` are the mechanical gate. The gate in the follower's own CI only lints the manifest
 and allowed signers (`check-manifest`); no tests run on GitHub.
 
+## 1.7.0
+
+aah gateway check statements count as evidence (pairs with agent-at-home spec 0023, attested checks). Additive: no record
+format or rule changes for host records. `VERSION` is 1.7.0, so a tree that re-syncs re-runs once (`ci-version-mismatch`).
+Full rules: `docs/ci-local.md`.
+
+- New evidence type: an UNSIGNED `record.aah.<host-id>.json` that carries an aah gateway's statement (the exact JSON
+  bytes) and its `ssh-keygen -Y sign -n aah-check@v1` signature. The code that builds and publishes it holds no key.
+  New verb `aah-record STATEMENT --sig SIG --principal P [--out DIR]` writes it; `publish` takes it without a `.sig`.
+- `verify` trusts only the statement: its signature must verify for a principal enrolled with
+  `namespaces="aah-check@v1"` in the default branch's `allowed_signers.org`; `statement.tree` must be the head tree,
+  `statement.repo` the repo (`--repo` or the github origin) and `statement.command` the manifest's new optional
+  `aah_check` string (the default branch's value wins over the head's). `exit` 0 passes every `os: "any"` suite; any
+  other exit fails them (`record-failed` + `suite-failed`), and like any red it is never out-voted. OS-bound suites stay
+  `skipped:os`, toolchain pins are not checked (a statement carries no probes), and aah records count only when
+  `os_required` is `"any"`. Anything else is ignored with a note (`bad-signature`, `wrong-tree`, `aah-wrong-repo`,
+  `aah-repo-unknown`, `aah-command-mismatch`, `aah-no-command`, `aah-any-mode-only`, `aah-bad-record`,
+  `aah-bad-statement`). `manifest-changed` applies unchanged.
+- `check-manifest`: an `allowed_signers.org` line needs `ci-result@hhay` or `aah-check@v1`; one key may not hold both.
+  `aah_check`, if present, must be a non-empty string.
+- No gateway key is enrolled in this release; enrolling one is a separate change to the follower's `allowed_signers.org`.
+
 ## 1.6.0
 
 `status` reads no reviews (spec `_design-ci/spec-ci-simple.v2.md`, owner go 2026-11-20). `VERSION` is 1.6.0, so a tree

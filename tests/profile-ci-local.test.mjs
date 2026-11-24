@@ -14,7 +14,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { KIT_ROOT, tmpdir } from './helpers.mjs';
 
-const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.6.0');
+const DIR = process.env.CI_LOCAL_SRC ? path.join(KIT_ROOT, 'src/profiles/ci-local') : path.join(KIT_ROOT, 'profiles/ci-local/1.7.0');
 const CI_SRC = path.join(DIR, '.standards/ci-local/ci.mjs');
 const CI_101 = path.join(KIT_ROOT, 'profiles/ci-local/1.0.1/.standards/ci-local/ci.mjs');
 const { VERSION } = await import(pathToFileURL(CI_SRC).href);
@@ -725,4 +725,129 @@ test('init: refuses an existing manifest without --force, unknown/missing stack 
   assert.equal(bad.status, 1); assert.match(bad.stdout, /cfg\.txt:2: github-token/); assert.ok(!bad.stdout.includes(tok));
   fs.writeFileSync(path.join(repo, 'cfg.txt'), `token = ${tok} # secret-scan:allow\n`);
   assert.equal(scan().status, 0);
+});
+
+// ---- 1.7.0: aah gateway check statements (aah spec 0023) as unsigned-record evidence ----
+const AAH = path.join(ROOT, 'aah-gw');
+sh('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'aah-gw', '-f', AAH]);
+const CHECK = 'node ci/run.mjs';
+const REPO = 'acme/widgets';
+const aahSigners = ({ valid = '20991231' } = {}) => `${signers()}aah@box1 namespaces="aah-check@v1",valid-before="${valid}" ${pub(AAH)}\n`;
+const aahRepo = ({ man = anyManifest({ aah_check: CHECK }), valid } = {}) => fixture({ man, sig: aahSigners({ valid }) });
+// The gateway's part: write the statement, sign it (ssh-keygen -Y sign -n aah-check@v1). The plugin's part: aah-record +
+// publish, with no key. `edit` changes the statement bytes AFTER signing.
+function aahPublish(repo, sha, { exit = 0, command = CHECK, repoName = REPO, key = AAH, ns = 'aah-check@v1', principal = 'aah@box1', edit } = {}) {
+  const dir = path.join(ROOT, `aah${++n}`); fs.mkdirSync(dir);
+  const st = JSON.stringify({ v: 1, box: 'box1', grant: 'g-widgets', repo: repoName, tree: treeOf(repo, sha), commit: sha, command, exit, log_sha256: crypto.createHash('sha256').update(`log ${n}`).digest('hex'), build_sha256: null, started_ms: 1795500000000, ended_ms: 1795500060000 });
+  const f = path.join(dir, 'statement.json');
+  fs.writeFileSync(f, st);
+  sh('ssh-keygen', ['-Y', 'sign', '-q', '-f', key, '-n', ns, f]);
+  if (edit) fs.writeFileSync(f, edit(st));
+  const r = ci(repo, ['aah-record', f, '--sig', `${f}.sig`, '--principal', principal, '--out', dir]);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(ci(repo, ['publish', r.result.record, '--no-push']).ok, true);
+  return r.result.record;
+}
+const verifyAah = (repo, sha, extra = []) => ci(repo, ['verify', '--sha', sha, '--repo', REPO, ...extra]);
+
+test('1.7.0 aah: a gateway-signed statement (exit 0, aah_check command, this tree) passes with an UNSIGNED record; status is success', () => {
+  const repo = aahRepo();
+  const sha = feat(repo);
+  const f = aahPublish(repo, sha);
+  assert.equal(path.basename(f), 'record.aah.box1.json');
+  assert.deepEqual(g(repo, 'ls-tree', '--name-only', `refs/ci/${treeOf(repo, sha)}`).split('\n'), ['record.aah.box1.json', 'summary.txt'], 'no .sig: the plugin holds no key');
+  const v = verifyAah(repo, sha);
+  assert.equal(v.code, 0, JSON.stringify(v)); assert.equal(v.result.verdict, 'pass'); assert.deepEqual(notes(v), []);
+  assert.deepEqual(v.result.records.map((x) => [x.os, x.signer, x.host, x.outcome]), [['aah', 'aah@box1', 'box1', 'pass']]);
+  assert.equal(ci(repo, ['status', '--sha', sha, '--repo', REPO, '--dry-run']).result.request.body.state, 'success');
+  // the record's own (unsigned) fields are never read: claiming fail there changes nothing, the statement says exit 0
+  const j = JSON.parse(fs.readFileSync(f, 'utf8')); j.outcome = 'fail'; j.tree = '0'.repeat(40);
+  putRef(repo, treeOf(repo, sha), { 'record.aah.box1.json': JSON.stringify(j) });
+  assert.equal(verifyAah(repo, sha).code, 0);
+});
+
+test('1.7.0 aah tamper: wrong namespace, unenrolled key, ci-only key, edited bytes, expired valid-before are bad-signature; never a pass', () => {
+  const cases = [
+    ['wrong namespace', {}, { ns: 'ci-result@hhay' }],
+    ['unenrolled key', {}, { key: KEY2 }],
+    ['key enrolled only for ci-result@hhay', {}, { key: KEY, principal: 'dim@test' }],
+    ['edited bytes (exit 1 -> 0 after signing)', {}, { exit: 1, edit: (t) => t.replace('"exit":1', '"exit":0') }],
+    ['edited bytes (command)', {}, { command: 'node ci/other.mjs', edit: (t) => t.replace('node ci/other.mjs', CHECK) }],
+    ['expired valid-before', { valid: '20200101' }, {}],
+  ];
+  for (const [what, fx, opt] of cases) {
+    const repo = aahRepo(fx);
+    const sha = feat(repo);
+    aahPublish(repo, sha, opt);
+    const v = verifyAah(repo, sha);
+    assert.equal(v.code, 2, `${what}: ${JSON.stringify(v.result)}`); assert.deepEqual(notes(v), ['bad-signature'], what); assert.deepEqual(v.result.records, [], what);
+  }
+});
+
+test('1.7.0 aah: tree mismatch, wrong repo, unknown repo, command mismatch, no aah_check and all-of mode are ignored (notes, never a pass)', () => {
+  let repo = aahRepo();
+  const a = branch(repo, 'a', { 'b.txt': 'b\n' });
+  const b = branch(repo, 'b', { 'c.txt': 'c\n' });
+  const f = aahPublish(repo, a); // a valid statement for tree(a), replayed onto tree(b)
+  putRef(repo, treeOf(repo, b), { 'record.aah.box1.json': fs.readFileSync(f) });
+  let v = verifyAah(repo, b);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['wrong-tree']); assert.match(v.result.notes[0].detail, /statement\.tree .* != head tree/);
+
+  const expect = (code, fx, opt, extra) => {
+    const r = fx.repo ?? aahRepo(fx);
+    const sha = fx.sha ?? feat(r);
+    aahPublish(r, sha, opt);
+    const x = extra === null ? ci(r, ['verify', '--sha', sha]) : verifyAah(r, sha, extra);
+    assert.equal(x.code, 2, `${code}: ${JSON.stringify(x.result)}`); assert.deepEqual(notes(x), [code]);
+  };
+  expect('aah-wrong-repo', {}, { repoName: 'acme/other' });
+  expect('aah-repo-unknown', {}, {}, null);
+  expect('aah-command-mismatch', {}, { command: 'node -e 0' });
+  expect('aah-no-command', { man: anyManifest() }, {});
+  expect('aah-any-mode-only', { man: manifest({ aah_check: CHECK }) }, {});
+  // the default branch's aah_check wins: a PR cannot redefine the command its statement must match
+  repo = aahRepo();
+  const pr = branch(repo, 'pr', { 'ci/suites.json': anyManifest({ aah_check: 'node -e 0' }) });
+  expect('aah-command-mismatch', { repo, sha: pr }, { command: 'node -e 0' });
+});
+
+test('1.7.0 aah: a nonzero exit is a red (record-failed + suite-failed) and a later green statement never out-votes it', () => {
+  const repo = aahRepo();
+  const sha = feat(repo);
+  aahPublish(repo, sha, { exit: 1 });
+  let v = verifyAah(repo, sha);
+  assert.equal(v.code, 1, JSON.stringify(v.result)); assert.deepEqual(reasons(v).sort(), ['record-failed', 'suite-failed']); assert.match(v.result.reasons.find((r) => r.code === 'record-failed').detail, /aah-check-failed: exit 1/);
+  aahPublish(repo, sha); // same file name: the red now lives only in the ref history
+  v = verifyAah(repo, sha);
+  assert.equal(v.code, 1, JSON.stringify(v.result)); assert.match(JSON.stringify(v.result.reasons), /replaced by a later record/);
+});
+
+test('1.7.0 aah: an OS-bound suite stays pending ("needs a <os> host"); manifest-changed applies unchanged', () => {
+  let repo = aahRepo({ man: anyManifest({ aah_check: CHECK, suites: [{ id: 'unit', run: ['x'], required: true, os: 'any' }, { id: 'native', run: ['x'], required: true, os: 'windows' }] }) });
+  let sha = feat(repo);
+  aahPublish(repo, sha);
+  let v = verifyAah(repo, sha);
+  assert.equal(v.code, 2, JSON.stringify(v.result)); assert.deepEqual(v.result.waiting, ['native: needs a windows host']);
+
+  repo = aahRepo();
+  sha = branch(repo, 'feat', { '.standards/ci-local/templates/x.json': '{}\n' });
+  aahPublish(repo, sha);
+  v = verifyAah(repo, sha);
+  assert.equal(v.code, 1); assert.deepEqual(reasons(v), ['manifest-changed']);
+  assert.equal(verifyAah(repo, sha, ['--approved']).code, 0);
+});
+
+test('1.7.0 aah: the gateway key cannot sign a ci record; lint takes aah-check@v1 lines, refuses one key with both namespaces; aah_check must be a string', () => {
+  const repo = aahRepo();
+  const sha = feat(repo);
+  simulate(repo, sha, 'linux', { signer: 'aah@box1', key: AAH }); // signed with namespace ci-result@hhay by the gateway key
+  const v = ci(repo, ['verify', '--sha', sha]);
+  assert.equal(v.code, 2); assert.deepEqual(notes(v), ['bad-signature']);
+
+  assert.equal(ci(repo, ['check-manifest']).code, 0, JSON.stringify(ci(repo, ['check-manifest'])));
+  fs.writeFileSync(path.join(repo, '.standards/ci-local/allowed_signers.org'), `aah@box1 namespaces="ci-result@hhay,aah-check@v1",valid-before="20991231" ${pub(AAH)}\nx@y namespaces="other@ns",valid-before="20991231" ${pub(AAH)}\n`);
+  fs.writeFileSync(path.join(repo, 'ci/suites.json'), anyManifest({ aah_check: '' }));
+  const f = ci(repo, ['check-manifest']).result.findings.join('\n');
+  assert.match(f, /:1: one key may not hold both ci-result@hhay and aah-check@v1/); assert.match(f, /:2: missing namespaces="ci-result@hhay" \(or "aah-check@v1"/);
+  assert.match(f, /aah_check must be the command string/);
 });

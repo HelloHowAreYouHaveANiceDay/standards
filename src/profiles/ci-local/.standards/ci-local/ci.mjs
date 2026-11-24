@@ -11,6 +11,8 @@
 //   status          verify, then POST commit status `builder-ci` (the only poster; --dry-run prints the request).
 //                   Reads NO reviews (1.6.0): a change under .standards/ci-local is approved only when the trusted caller passes --approved
 //   check-manifest  lint ci/suites.json and the allowed-signers file
+//   aah-record STMT --sig SIG --principal P   wrap an aah gateway's signed check statement (namespace aah-check@v1) in an
+//                   UNSIGNED record.aah.<host-id>.json; publish it like any record. verify trusts only the statement (1.7.0)
 //   init --stack S  copy templates/S.json (node|rust|python-uv|dotnet|static-site) to ci/suites.json (+ ci/scripts/secret-scan.mjs)
 //
 // Envelope with --json: {ok:true,result} | {ok:false,error:{code,message}}.
@@ -25,8 +27,11 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.6.0';
+export const VERSION = '1.7.0';
 const NS = 'ci-result@hhay';
+// 1.7.0: an aah gateway signs a check statement (aah spec 0023) with this namespace. Its key never signs ci records.
+const AAH_NS = 'aah-check@v1';
+const isAahRecord = (name) => /^record\.aah\.[A-Za-z0-9_-]+\.json$/.test(name);
 const SCHEMA = 'ci-local/1';
 const RECORD_SCHEMA = 'ci-record/1';
 const SIGNERS_PATH = '.standards/ci-local/allowed_signers.org';
@@ -137,6 +142,7 @@ export function validateManifest(m) {
       if (s.ports !== undefined && !(Number.isInteger(s.ports) && s.ports > 0)) e.push(`${w}: ports must be a positive integer`);
     });
   }
+  if (m.aah_check !== undefined && (typeof m.aah_check !== 'string' || !m.aah_check.trim())) e.push('aah_check must be the command string an aah gateway check runs');
   return e;
 }
 
@@ -155,7 +161,9 @@ export function lintSigners(text) {
     const w = `${SIGNERS_PATH}:${i + 1}`;
     const principal = t.split(/\s+/)[0];
     if (/[*?]/.test(principal)) e.push(`${w}: wildcard principal "${principal}"`);
-    if (!/namespaces="[^"]*ci-result@hhay[^"]*"/.test(t) && !/namespaces=ci-result@hhay/.test(t)) e.push(`${w}: missing namespaces="${NS}"`);
+    const ns = (t.match(/namespaces="([^"]*)"/)?.[1] ?? t.match(/namespaces=([^\s,]+)/)?.[1] ?? '').split(',');
+    if (!ns.includes(NS) && !ns.includes(AAH_NS)) e.push(`${w}: missing namespaces="${NS}" (or "${AAH_NS}" for an aah gateway)`);
+    else if (ns.includes(NS) && ns.includes(AAH_NS)) e.push(`${w}: one key may not hold both ${NS} and ${AAH_NS}`);
     if (!/valid-before="?\d{8}/.test(t)) e.push(`${w}: missing valid-before`);
   });
   return e;
@@ -388,12 +396,12 @@ function replacedRecords(cwd, ref, tip) {
     if (!ls) continue;
     const blobs = {};
     for (const line of ls.split('\n').filter(Boolean)) { const [meta, name] = line.split('\t'); blobs[name] = meta.split(' ')[2]; }
-    for (const name of Object.keys(blobs).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n) && blobs[`${n}.sig`])) {
+    for (const name of Object.keys(blobs).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n) && (blobs[`${n}.sig`] || isAahRecord(n)))) {
       const buf = gitOk(cwd, ['cat-file', 'blob', blobs[name]], 'cat-file', { binary: true });
       const key = `${name}:${buf.toString('hex')}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ name, buf, sig: gitOk(cwd, ['cat-file', 'blob', blobs[`${name}.sig`]], 'cat-file', { binary: true }) });
+      out.push({ name, buf, sig: blobs[`${name}.sig`] ? gitOk(cwd, ['cat-file', 'blob', blobs[`${name}.sig`]], 'cat-file', { binary: true }) : undefined });
     }
   }
   return out;
@@ -402,8 +410,9 @@ function replacedRecords(cwd, ref, tip) {
 function cmdPublish(o) {
   const cwd = repoRoot(o);
   const recPath = o._[1]; if (!recPath) throw usage('publish RECORD');
-  if (!fs.existsSync(`${recPath}.sig`)) throw new CiError('unsigned', `${recPath}.sig not found: run \`ci sign\` first`, 1);
   const rec = JSON.parse(fs.readFileSync(recPath, 'utf8'));
+  const aah = rec?.evidence?.type === AAH_NS; // unsigned by design: its embedded statement carries the signature
+  if (!aah && !fs.existsSync(`${recPath}.sig`)) throw new CiError('unsigned', `${recPath}.sig not found: run \`ci sign\` first`, 1);
   if (!/^[0-9a-f]{40,64}$/.test(rec.tree ?? '')) throw new CiError('bad-record', 'record has no tree');
   const ref = `refs/ci/${rec.tree}`;
   const remote = o.remote ?? 'origin';
@@ -415,7 +424,8 @@ function cmdPublish(o) {
     if (hasRemote) git(cwd, ['fetch', '--quiet', remote, `+${ref}:${ref}`]);
     const parent = gitTry(cwd, ['rev-parse', '--verify', '-q', ref]);
     const files = (parent && readRef(cwd, ref)) || {};
-    files[base] = fs.readFileSync(recPath); files[`${base}.sig`] = fs.readFileSync(`${recPath}.sig`);
+    files[base] = fs.readFileSync(recPath);
+    if (aah) delete files[`${base}.sig`]; else files[`${base}.sig`] = fs.readFileSync(`${recPath}.sig`);
     const summary = Object.keys(files).filter((n) => n.endsWith('.json')).sort().map((n) => { const r = JSON.parse(files[n].toString('utf8')); return `${n}: ${r.outcome} signer=${r.signer} host=${r.host} created=${r.created}`; }).join('\n');
     files['summary.txt'] = Buffer.from(`${summary}\n`.slice(0, 64 * 1024));
     const lines = Object.keys(files).sort().map((n) => `100644 blob ${gitOk(cwd, ['hash-object', '-w', '--stdin'], 'hash-object', { input: files[n] })}\t${n}`).join('\n');
@@ -432,16 +442,42 @@ function cmdPublish(o) {
 }
 
 // ---------- verify ----------
-function sshVerify(signersText, principal, recordBuf, sigBuf, verifyTime) {
+function sshVerify(signersText, principal, recordBuf, sigBuf, verifyTime, ns = NS) {
   const dir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? os.tmpdir(), 'ci-sv-'));
   try {
     fs.writeFileSync(path.join(dir, 'signers'), signersText); fs.writeFileSync(path.join(dir, 'sig'), sigBuf);
-    const args = ['-Y', 'verify', '-f', path.join(dir, 'signers'), '-I', principal, '-n', NS, '-s', path.join(dir, 'sig')];
+    const args = ['-Y', 'verify', '-f', path.join(dir, 'signers'), '-I', principal, '-n', ns, '-s', path.join(dir, 'sig')];
     if (verifyTime) args.push(`-Overify-time=${verifyTime}`);
     const r = run('ssh-keygen', args, { input: recordBuf });
     return { ok: r.code === 0, detail: (r.err || r.out).trim().split('\n')[0] };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
+
+// An aah record (1.7.0) is UNSIGNED: only the statement inside it counts, and only after its signature verifies for a
+// principal enrolled with namespaces="aah-check@v1" in the default branch's allowed signers. Every claim (tree, repo,
+// command, exit) is read from the signed statement bytes; the record's own fields are ignored. One statement whose
+// command equals the manifest's `aah_check` covers every os:"any" suite (passed on exit 0, failed otherwise); an
+// OS-bound suite is skipped:os (the statement names no OS), and toolchain pins are not checked (the statement carries
+// no probes: the gateway's sandbox is the toolchain). Returns { rec } or { note: [code, detail] }.
+export function aahEvidence(name, buf, { signersText, tree, repo, command, suites, verifyTime }) {
+  let r; try { r = JSON.parse(buf.toString('utf8')); } catch { /* below */ }
+  const ev = r?.evidence;
+  if (ev?.type !== AAH_NS || ![ev.principal, ev.statement, ev.signature].every((x) => typeof x === 'string' && x)) return { note: ['aah-bad-record', `${name}: evidence needs type "${AAH_NS}", principal, statement, signature`] };
+  let st; try { st = JSON.parse(ev.statement); } catch { /* below */ }
+  const at = verifyTime === 'record' && Number.isInteger(st?.ended_ms) ? new Date(st.ended_ms).toISOString().replace(/[-:TZ]/g, '').slice(0, 14) : null;
+  const v = sshVerify(signersText, ev.principal, Buffer.from(ev.statement, 'utf8'), Buffer.from(ev.signature, 'utf8'), at, AAH_NS);
+  if (!v.ok) return { note: ['bad-signature', `${name}: ${v.detail}`] };
+  if (!st || st.v !== 1 || !Number.isInteger(st.exit) || typeof st.command !== 'string' || typeof st.repo !== 'string') return { note: ['aah-bad-statement', `${name}: statement is not v1 {repo, tree, command, exit, ...}`] };
+  if (st.tree !== tree) return { note: ['wrong-tree', `${name}: statement.tree ${String(st.tree).slice(0, 12)} != head tree ${tree.slice(0, 12)}`] };
+  if (!repo) return { note: ['aah-repo-unknown', `${name}: pass --repo OWNER/REPO (no github origin) to check statement.repo`] };
+  if (st.repo.toLowerCase() !== repo.toLowerCase()) return { note: ['aah-wrong-repo', `${name}: statement.repo ${st.repo} != ${repo}`] };
+  if (typeof command !== 'string') return { note: ['aah-no-command', `${name}: ${MANIFEST_PATH} declares no aah_check command`] };
+  if (st.command !== command) return { note: ['aah-command-mismatch', `${name}: statement ran "${st.command}", aah_check is "${command}"`] };
+  const pass = st.exit === 0;
+  return { rec: { os: 'aah', signer: ev.principal, host: String(st.box ?? ''), outcome: pass ? 'pass' : 'fail', reason: pass ? null : `aah-check-failed: exit ${st.exit}`, created: Number.isInteger(st.ended_ms) ? new Date(st.ended_ms).toISOString() : null, suites: suites.map((s) => ({ id: s.id, status: (s.os ?? 'any') !== 'any' ? 'skipped:os' : pass ? 'passed' : 'failed', log_sha256: st.log_sha256 ?? null })) } };
+}
+
+const repoOf = (cwd, o) => o.repo ?? (gitTry(cwd, ['remote', 'get-url', o.remote ?? 'origin']) ?? '').match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1] ?? null;
 
 export function verifyCore(o, cwd) {
   const reasons = []; const fail = (code, detail) => reasons.push({ code, detail });
@@ -502,8 +538,17 @@ export function verifyCore(o, cwd) {
   // record file, so older ref commits are read too; only their FAILING records count (a replaced pass changes nothing).
   const candidates = Object.keys(files).filter((n) => /^record\.[a-z]+(?:\.[A-Za-z0-9_-]+)?\.json$/.test(n)).sort().map((name) => ({ name, buf: files[name], sig: files[`${name}.sig`], replaced: false }));
   for (const h of replacedRecords(cwd, ref, files)) candidates.push({ ...h, replaced: true });
+  const aahCtx = { signersText, tree, repo: repoOf(cwd, o), command: defManifest?.aah_check ?? head.aah_check, suites: head.suites, verifyTime: o['verify-time'] };
   for (const { name, buf, sig: sigBuf, replaced } of candidates) {
     const osName = name.split('.')[1];
+    if (isAahRecord(name)) {
+      const a = aahEvidence(name, buf, aahCtx);
+      if (a.note) { note(...a.note); continue; }
+      if (replaced && a.rec.outcome === 'pass') continue;
+      if (!anyMode) { note('aah-any-mode-only', `${name}: a statement names no OS, so it counts only when os_required is "any"`); continue; }
+      verified.push(replaced ? { ...a.rec, replaced: true } : a.rec);
+      continue;
+    }
     let rec; try { rec = JSON.parse(buf.toString('utf8')); } catch { /* bad-signature below */ }
     if (replaced && rec?.outcome === 'pass') continue;
     if (!sigBuf) { note('unsigned', `${name} has no .sig`); continue; }
@@ -571,12 +616,8 @@ export function statusRequest({ repo, sha, verdict, reasons, missing, waiting = 
 
 async function cmdStatus(o) {
   const cwd = repoRoot(o);
-  let repo = o.repo;
-  if (!repo) {
-    const url = gitTry(cwd, ['remote', 'get-url', o.remote ?? 'origin']) ?? '';
-    repo = url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
-    if (!repo) throw usage('status needs --repo OWNER/REPO');
-  }
+  const repo = repoOf(cwd, o);
+  if (!repo) throw usage('status needs --repo OWNER/REPO');
   const apiBase = (o['api-base'] ?? process.env.CI_GITHUB_API ?? 'https://api.github.com').replace(/\/$/, '');
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
   const v = verifyCore(o, cwd);
@@ -604,6 +645,22 @@ function cmdCheckManifest(o) {
   return { exit: findings.length ? 1 : 0, result: { findings } };
 }
 
+// ---------- aah-record ----------
+// Wraps a gateway-signed statement + its signature in an UNSIGNED record. Needs no key; verify trusts only the statement.
+function cmdAahRecord(o) {
+  const stPath = o._[1]; if (!stPath || !o.sig || !o.principal) throw usage('aah-record STATEMENT --sig SIG --principal P [--out DIR]');
+  const statement = fs.readFileSync(stPath, 'utf8');
+  let st; try { st = JSON.parse(statement); } catch (e) { throw new CiError('aah-bad-statement', `${stPath}: not JSON (${e.message})`, 1); }
+  if (!/^[0-9a-f]{40,64}$/.test(st?.tree ?? '')) throw new CiError('aah-bad-statement', `${stPath}: no tree`, 1);
+  const out = path.resolve(o.out ?? path.dirname(stPath));
+  fs.mkdirSync(out, { recursive: true });
+  const file = path.join(out, `record.aah.${hostIdOf(o.principal)}.json`);
+  const record = { schema: RECORD_SCHEMA, tree: st.tree, commit: st.commit ?? null, os: 'aah', signer: o.principal, host: st.box ?? null, outcome: st.exit === 0 ? 'pass' : 'fail', evidence: { type: AAH_NS, principal: o.principal, statement, signature: fs.readFileSync(o.sig, 'utf8') } };
+  fs.writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  fs.rmSync(`${file}.sig`, { force: true });
+  return { exit: 0, result: { record: file, tree: st.tree, unsigned: true } };
+}
+
 // ---------- init ----------
 // Copies templates/<stack>.json to ci/suites.json and templates/secret-scan.mjs to ci/scripts/secret-scan.mjs.
 const TEMPLATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'templates');
@@ -623,7 +680,7 @@ function cmdInit(o) {
 }
 
 // ---------- main ----------
-const VERBS = { run: cmdRun, sign: cmdSign, publish: cmdPublish, verify: cmdVerify, status: cmdStatus, 'check-manifest': cmdCheckManifest, init: cmdInit };
+const VERBS = { run: cmdRun, sign: cmdSign, publish: cmdPublish, verify: cmdVerify, status: cmdStatus, 'check-manifest': cmdCheckManifest, init: cmdInit, 'aah-record': cmdAahRecord };
 
 export async function main(argv) {
   let o; let json = argv.includes('--json');
